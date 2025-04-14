@@ -34,4 +34,4 @@ coverage/
 # その他
 .npm
 .eslintcache
-
+package-lock.json
