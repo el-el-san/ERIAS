@@ -5,6 +5,7 @@ import logger from '../utils/logger';
 import config from '../config/config';
 import path from 'path';
 import fs from 'fs';
+import { GeminiClient } from '../llm/geminiClient';
 
 /**
  * Discordボットインターフェイス
@@ -99,26 +100,40 @@ export class DiscordBot {
     // DMは無視（サーバーのみ対応）
     if (!message.guild) return;
     
-    // コマンドプレフィックスで始まらないメッセージは無視
-    if (!message.content.startsWith(this.commandPrefix)) return;
-    
     // 許可されたギルド/サーバーIDのチェック
     if (config.discord.allowedGuildIds.length > 0 && 
         !config.discord.allowedGuildIds.includes(message.guild.id)) {
-      logger.warn(`Command from non-allowed guild: ${message.guild.id}`);
+      logger.warn(`Message from non-allowed guild: ${message.guild.id}`);
       return;
     }
     
     // 許可されたユーザーIDのチェック
     if (config.discord.allowedUserIds.length > 0 && 
         !config.discord.allowedUserIds.includes(message.author.id)) {
-      logger.warn(`Command from non-allowed user: ${message.author.id}`);
+      logger.warn(`Message from non-allowed user: ${message.author.id}`);
       return;
     }
     
-    // コマンドと引数を分離
-    const args = message.content.slice(this.commandPrefix.length).trim().split(/ +/);
-    const command = args.shift()?.toLowerCase();
+    // コマンドプレフィックスで始まるかチェック
+    if (message.content.startsWith(this.commandPrefix)) {
+      // コマンドと引数を分離
+      const args = message.content.slice(this.commandPrefix.length).trim().split(/ +/);
+      const command = args.shift()?.toLowerCase();
+      
+      await this.handleCommand(message, command, args);
+    } else {
+      // コマンドではない通常のメッセージの場合、LLMと会話
+      await this.handleConversation(message);
+    }
+  }
+  
+  /**
+   * コマンド処理
+   * @param message メッセージオブジェクト
+   * @param command コマンド名
+   * @param args コマンド引数
+   */
+  private async handleCommand(message: Message, command?: string, args: string[] = []): Promise<void> {
     
     try {
       // コマンド処理
@@ -127,6 +142,7 @@ export class DiscordBot {
           await this.handleHelpCommand(message);
           break;
         
+        case 'new':
         case 'newproject':
           await this.handleNewProjectCommand(message, args.join(' '));
           break;
@@ -152,6 +168,61 @@ export class DiscordBot {
   }
   
   /**
+   * LLMとの会話処理
+   * @param message メッセージオブジェクト
+   */
+  private async handleConversation(message: Message): Promise<void> {
+    try {
+      // Geminiクライアントからインスタンスを取得
+      const geminiClient = new GeminiClient();
+      
+      // システムプロンプト
+      const systemPrompt = "あなたはフレンドリーなアシスタントです。ユーザーからの質問に簡潔かつ役立つ形で答えてください。コードが必要な場合は実用的なコード例を提供してください。";
+      
+      // LLMにメッセージを送信
+      logger.info(`Sending conversation to LLM from user ${message.author.tag}: ${message.content.substring(0, 100)}...`);
+      const response = await geminiClient.generateContent(
+        message.content,
+        systemPrompt,
+        undefined,
+        60000 // 60秒タイムアウト
+      );
+      
+      // 応答が長すぎる場合は分割して送信
+      const maxMessageLength = 2000; // Discordの最大メッセージ長
+      
+      if (response.length <= maxMessageLength) {
+        await message.reply(response);
+      } else {
+        // 長いメッセージを分割
+        let remainingText = response;
+        
+        while (remainingText.length > 0) {
+          // 最大長までのチャンクを取得
+          const chunkSize = Math.min(remainingText.length, maxMessageLength);
+          let chunk = remainingText.substring(0, chunkSize);
+          
+          // コードブロックやマークダウンを分割しないようにする
+          if (chunkSize < remainingText.length && !chunk.endsWith('\n')) {
+            const lastNewline = chunk.lastIndexOf('\n');
+            if (lastNewline > chunkSize * 0.8) { // 最大長の80%以降に改行があればそこで分割
+              chunk = chunk.substring(0, lastNewline + 1);
+            }
+          }
+          
+          // 分割した各チャンクは返信として送信
+          await message.reply(chunk);
+          remainingText = remainingText.substring(chunk.length);
+        }
+      }
+      
+    } catch (error) {
+      logger.error(`Error in conversation with LLM: ${(error as Error).message}`);
+      await message.reply(`すみません、会話処理中にエラーが発生しました: ${(error as Error).message}`);
+    }
+  }
+  
+  /**
    * helpコマンド処理
    * @param message メッセージオブジェクト
    */
@@ -159,13 +230,16 @@ export class DiscordBot {
     const helpText = `
 **Discord AI エージェント - コマンド一覧**
 
-\`${this.commandPrefix}newproject [仕様]\` - 新しいプロジェクトを生成
+\`${this.commandPrefix}new [仕様]\` - 新しいプロジェクトを生成
 \`${this.commandPrefix}status [タスクID]\` - プロジェクト生成の状態を確認
 \`${this.commandPrefix}cancel [タスクID]\` - 実行中のプロジェクト生成をキャンセル
 \`${this.commandPrefix}help\` - このヘルプを表示
 
+**通常会話**
+スラッシュ(/)から始まらないメッセージには、AIがチャット形式で応答します。質問やコードの相談などにご利用ください。
+
 **使用例**
-\`${this.commandPrefix}newproject Reactを使用したシンプルなTODOアプリを作成してください。LocalStorageでデータを保存し、タスクの追加、編集、削除、完了のマーキングができるようにしてください。\`
+\`${this.commandPrefix}new Reactを使用したシンプルなTODOアプリを作成してください。LocalStorageでデータを保存し、タスクの追加、編集、削除、完了のマーキングができるようにしてください。\`
 `;
     
     await message.reply(helpText);
@@ -178,7 +252,7 @@ export class DiscordBot {
    */
   private async handleNewProjectCommand(message: Message, spec: string): Promise<void> {
     if (!spec || spec.trim().length === 0) {
-      await message.reply(`プロジェクトの仕様を指定してください。例: \`${this.commandPrefix}newproject Reactを使ったTODOアプリ\``);
+      await message.reply(`プロジェクトの仕様を指定してください。例: \`${this.commandPrefix}new Reactを使ったTODOアプリ\``);
       return;
     }
     
@@ -241,7 +315,7 @@ export class DiscordBot {
    */
   private async handleStatusCommand(message: Message, taskId?: string): Promise<void> {
     if (!taskId) {
-      await message.reply('タスクIDを指定してください。例: `!status 1234-5678-90ab-cdef`');
+      await message.reply(`タスクIDを指定してください。例: \`${this.commandPrefix}status 1234-5678-90ab-cdef\``);
       return;
     }
     
@@ -271,7 +345,7 @@ export class DiscordBot {
    */
   private async handleCancelCommand(message: Message, taskId?: string): Promise<void> {
     if (!taskId) {
-      await message.reply('キャンセルするタスクIDを指定してください。例: `!cancel 1234-5678-90ab-cdef`');
+      await message.reply(`キャンセルするタスクIDを指定してください。例: \`${this.commandPrefix}cancel 1234-5678-90ab-cdef\``);
       return;
     }
     
