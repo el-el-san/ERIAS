@@ -167,9 +167,56 @@ export class Debugger implements DebuggerInterface {
     ].map(tool => {
       // ツールのexecute関数をラップして、projectIdを自動で追加
       const wrappedTool: ToolDefinition = {
-        ...tool,
+        name: tool.name,
+        description: `Debug tool for project ${task.id}: ${tool.name}`,
+        parameters: {
+          type: "object",
+          properties: {
+            projectPath: { type: "string" },
+            filePath: { type: "string" },
+            content: { type: "string" }
+          },
+          required: ["projectPath"]
+        },
         execute: async (args: any) => {
-          return await tool.execute({ ...args, projectId: task.id });
+          if (tool.name === 'writeProjectFile') {
+            // 必要な引数がすべて揃っていることを確認
+            if (!args.filePath || args.content === undefined) {
+              throw new Error(`Missing required parameter for writeProjectFile: filePath=${args.filePath}, content is defined=${args.content !== undefined}`);
+            }
+            // 修正: 適切に引数を渡す
+            return await (tool.function as any)(
+              args.projectPath || getProjectPath(task.id),
+              args.filePath,
+              args.content
+            );
+          } else {
+            if (tool.name === 'readProjectFile') {
+              if (!args.filePath) {
+                throw new Error('Missing required parameter: filePath');
+              }
+              return await (tool.function as any)({
+                projectId: args.projectId || task.id,
+                filePath: args.filePath
+              });
+            } else if (tool.name === 'listDirectory') {
+              return await (tool.function as any)({
+                projectId: args.projectId || task.id,
+                dirPath: args.dirPath
+              });
+            } else if (tool.name === 'exists') {
+              if (!args.itemPath) {
+                throw new Error('Missing required parameter: itemPath');
+              }
+              return await (tool.function as any)({
+                projectId: args.projectId || task.id,
+                itemPath: args.itemPath
+              });
+            } else {
+              // その他の関数の場合は引数をそのまま渡す
+              return await (tool.function as any)(args);
+            }
+          }
         }
       };
       return wrappedTool;
