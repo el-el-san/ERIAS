@@ -1,15 +1,14 @@
 import path from 'path';
 import fs from 'fs/promises';
 import { v4 as uuidv4 } from 'uuid';
-import archiver from 'archiver';
-import { createWriteStream } from 'fs';
 import {
   ProjectTask,
   ProjectStatus,
   ProgressListener,
-  ErrorInfo,
-  FileInfo,
-  DevelopmentPlan
+  FeedbackPriority,
+  FeedbackUrgency,
+  FeedbackType,
+  UserFeedback
 } from './types';
 import { Planner } from './planner';
 import { Coder } from './coder';
@@ -19,6 +18,8 @@ import logger from '../utils/logger';
 import config from '../config/config';
 import { getProjectPath } from '../tools/fileSystem';
 import { withTimeout } from '../utils/asyncUtils';
+import { FeedbackHandler } from './feedbackHandler';
+import { ProjectGenerator } from './projectGenerator';
 
 /**
  * エージェントコア
@@ -29,8 +30,11 @@ export class AgentCore {
   private coder: Coder;
   private tester: Tester;
   private debugger: Debugger;
+  private feedbackHandler: FeedbackHandler;
+  private projectGenerator: ProjectGenerator;
   private progressListeners: ProgressListener[] = [];
   private activeTasks: Map<string, ProjectTask> = new Map();
+  private pendingFeedbackRequests: Map<string, { resolve: (feedback: string | null) => void, timeoutHandler: NodeJS.Timeout }> = new Map();
   
   /**
    * AgentCoreを初期化
@@ -44,6 +48,14 @@ export class AgentCore {
     this.coder = coder;
     this.tester = tester;
     this.debugger = debugger_;
+    this.feedbackHandler = new FeedbackHandler(this.planner, this.coder);
+    this.projectGenerator = new ProjectGenerator(
+      this.planner,
+      this.coder,
+      this.tester,
+      this.debugger,
+      this.feedbackHandler
+    );
   }
   
   /**
@@ -70,7 +82,7 @@ export class AgentCore {
    * @param task プロジェクトタスク
    * @param message 進捗メッセージ
    */
-  private async notifyProgress(task: ProjectTask, message: string): Promise<void> {
+  public async notifyProgress(task: ProjectTask, message: string): Promise<void> {
     task.lastProgressUpdate = Date.now();
     task.currentAction = message;
     
@@ -107,6 +119,13 @@ export class AgentCore {
       startTime: Date.now(),
       projectPath,
       lastProgressUpdate: Date.now(),
+      feedbackQueue: {
+        taskId,
+        feedbacks: [],
+        lastProcessedIndex: 0
+      },
+      hasCriticalFeedback: false,
+      currentContextualFeedback: []
     };
     
     this.activeTasks.set(taskId, task);
@@ -136,7 +155,7 @@ export class AgentCore {
       
       // 全体プロセスのタイムアウトを設定
       return await withTimeout(
-        this.executeProjectGeneration(task),
+        this.projectGenerator.executeProjectGeneration(task, this.notifyProgress.bind(this)),
         config.agent.maxExecutionTime,
         `Project generation timed out after ${config.agent.maxExecutionTime}ms`
       );
@@ -164,125 +183,6 @@ export class AgentCore {
   }
   
   /**
-   * プロジェクト生成の全体プロセスを実行
-   * @param task プロジェクトタスク
-   */
-  private async executeProjectGeneration(task: ProjectTask): Promise<string> {
-    // 開始を通知
-    await this.notifyProgress(task, 'プロジェクト生成を開始します...');
-    
-    // 1. 計画立案フェーズ
-    task.status = ProjectStatus.PLANNING;
-    await this.notifyProgress(task, '開発計画を立案中...');
-    
-    const plan = await this.planner.createPlan(task);
-    task.plan = plan;
-    
-    await this.notifyProgress(task, `開発計画が完了しました\n生成ファイル数: ${plan.files.length}\n使用技術: ${this.formatTechStack(plan)}`);
-    
-    // 2. コーディングフェーズ
-    task.status = ProjectStatus.CODING;
-    
-    // 引用関係を考慮してファイルを生成する順番を決定
-    const sortedFiles = this.sortFilesByDependency(plan.files);
-    
-    // 各ファイルを生成
-    for (let i = 0; i < sortedFiles.length; i++) {
-      const fileInfo = sortedFiles[i];
-      await this.notifyProgress(task, `ファイルを生成中 (${i+1}/${sortedFiles.length}): ${fileInfo.path}`);
-      
-      try {
-        const content = await this.coder.generateFile(task, fileInfo);
-        fileInfo.content = content;
-        fileInfo.status = 'generated';
-      } catch (error) {
-        logger.error(`Error generating file ${fileInfo.path}: ${(error as Error).message}`);
-        fileInfo.status = 'error';
-        
-        // 重要でないファイルの失敗は無視して続行
-        await this.notifyProgress(task, `ファイル ${fileInfo.path} の生成中にエラーが発生しましたが、続行します`);
-      }
-    }
-    
-    // 依存関係をインストール
-    await this.notifyProgress(task, '依存関係をインストール中...');
-    await this.coder.installDependencies(task);
-    
-    // 3. テストフェーズ
-    task.status = ProjectStatus.TESTING;
-    await this.notifyProgress(task, 'テストを実行中...');
-    
-    const testResult = await this.tester.runTests(task);
-    
-    // テスト失敗時はデバッグフェーズに進む
-    if (!testResult.success && task.errors.length > 0) {
-      let debugAttempts = 0;
-      const maxDebugRetries = config.agent.maxDebugRetries;
-      
-      // 4. デバッグフェーズ
-      task.status = ProjectStatus.DEBUGGING;
-      
-      while (debugAttempts < maxDebugRetries) {
-        debugAttempts++;
-        
-        await this.notifyProgress(task, `エラーを修正中... (試行 ${debugAttempts}/${maxDebugRetries})`);
-        
-        // 最新のエラーを取得
-        const latestError = task.errors[task.errors.length - 1];
-        
-        // エラーを修正
-        const fixResult = await this.debugger.fixError(task, latestError);
-        
-        if (fixResult) {
-          // 修正後にテストを再実行
-          await this.notifyProgress(task, '修正後のテストを実行中...');
-          const retriedTestResult = await this.tester.runTests(task);
-          
-          if (retriedTestResult.success) {
-            // テストが成功した場合はデバッグループを終了
-            await this.notifyProgress(task, 'エラーを修正し、テストが成功しました');
-            break;
-          } else if (debugAttempts >= maxDebugRetries) {
-            // 最大試行回数に達した場合
-            await this.notifyProgress(task, `最大試行回数 (${maxDebugRetries}) に達しましたが、一部のエラーが解決できませんでした`);
-          }
-        } else {
-          // 修正に失敗した場合
-          await this.notifyProgress(task, `エラーの修正に失敗しました (試行 ${debugAttempts}/${maxDebugRetries})`);
-          
-          if (debugAttempts >= maxDebugRetries) {
-            await this.notifyProgress(task, `最大試行回数 (${maxDebugRetries}) に達しましたが、エラーを修正できませんでした`);
-          }
-        }
-      }
-    }
-    
-    // 5. 最終化フェーズ
-    // 最終テストの結果を確認
-    const finalTestResult = await this.tester.runTests(task);
-    
-    if (finalTestResult.success) {
-      task.status = ProjectStatus.COMPLETED;
-      await this.notifyProgress(task, 'プロジェクトが正常に生成され、テストに合格しました');
-    } else {
-      // テストは失敗したが、プロジェクトとしては生成完了
-      task.status = ProjectStatus.COMPLETED;
-      await this.notifyProgress(task, 'プロジェクトは生成されましたが、一部のテストに失敗しました');
-    }
-    
-    // プロジェクトをZIPにアーカイブ
-    const zipPath = await this.archiveProject(task);
-    
-    task.endTime = Date.now();
-    
-    // 完了メッセージ
-    const duration = (task.endTime - task.startTime) / 1000;
-    await this.notifyProgress(task, `プロジェクト生成が完了しました (所要時間: ${duration.toFixed(1)}秒)`);
-    
-    return zipPath;
-  }
-  
-  /**
    * タスクをキャンセル
    * @param taskId タスクID
    */
@@ -304,116 +204,123 @@ export class AgentCore {
   }
   
   /**
-   * 依存関係に基づいてファイルをソート
-   * @param files ファイル情報の配列
+   * ユーザーフィードバックをキューに追加
+   * @param taskId タスクID
+   * @param userId ユーザーID
+   * @param content フィードバック内容
+   * @param priority 優先度
+   * @param urgency 緊急度
+   * @param type フィードバックタイプ
+   * @param targetFile 対象ファイル
    */
-  private sortFilesByDependency(files: FileInfo[]): FileInfo[] {
-    const fileMap = new Map<string, FileInfo>();
-    files.forEach(file => fileMap.set(file.path, file));
+  public async queueUserFeedback(
+    taskId: string,
+    userId: string,
+    content: string,
+    priority: FeedbackPriority = 'normal',
+    urgency: FeedbackUrgency = 'normal',
+    type: FeedbackType = 'general',
+    targetFile?: string
+  ): Promise<boolean> {
+    const task = this.getTask(taskId);
     
-    // 依存関係から順序を計算
-    const visited = new Set<string>();
-    const result: FileInfo[] = [];
+    if (!task || task.userId !== userId) {
+      return false;
+    }
     
-    const visit = (filePath: string) => {
-      if (visited.has(filePath)) return;
-      
-      const file = fileMap.get(filePath);
-      if (!file) return;
-      
-      visited.add(filePath);
-      
-      // 依存関係があればそれらを先に処理
-      if (file.dependencies) {
-        for (const dep of file.dependencies) {
-          visit(dep);
-        }
-      }
-      
-      result.push(file);
+    const feedback: UserFeedback = {
+      id: uuidv4(),
+      taskId,
+      timestamp: Date.now(),
+      content,
+      priority,
+      urgency,
+      type,
+      targetFile,
+      status: 'pending'
     };
     
-    // まずパッケージ設定ファイルを処理
-    const configFiles = files.filter(f => {
-      const filename = path.basename(f.path).toLowerCase();
-      return filename === 'package.json' || 
-             filename === 'tsconfig.json' || 
-             filename === '.env' || 
-             filename === '.env.example' || 
-             filename === '.gitignore';
-    });
-    
-    for (const configFile of configFiles) {
-      visit(configFile.path);
+    // キューに追加
+    if (priority === 'high') {
+      task.feedbackQueue.feedbacks.unshift(feedback);
+    } else {
+      task.feedbackQueue.feedbacks.push(feedback);
     }
     
-    // 残りのファイルを処理
-    for (const file of files) {
-      visit(file.path);
+    // 緊急フィードバックの場合はフラグを立てる
+    if (urgency === 'critical') {
+      task.hasCriticalFeedback = true;
+      
+      // 現在実行中のフェーズに応じたメッセージを表示
+      let interruptMessage = `⚠️ 緊急の指示を受け付けました: "${content}"`;
+      
+      if (task.status === ProjectStatus.TESTING) {
+        interruptMessage += "\nテスト完了後、再計画を検討します。";
+      } else if (task.status === ProjectStatus.CODING) {
+        interruptMessage += "\n現在のファイル生成完了後、変更を適用します。";
+      }
+      
+      await this.notifyProgress(task, interruptMessage);
+    } else {
+      await this.notifyProgress(task, `新しい指示をキューに追加しました: "${content}"`);
     }
     
-    return result;
+    // フィードバック待ちのリクエストがあれば応答
+    const pendingRequest = this.pendingFeedbackRequests.get(taskId);
+    if (pendingRequest) {
+      clearTimeout(pendingRequest.timeoutHandler);
+      pendingRequest.resolve(content);
+      this.pendingFeedbackRequests.delete(taskId);
+    }
+    
+    return true;
   }
   
   /**
-   * 技術スタックをフォーマット
-   * @param plan 開発計画
+   * ユーザーフィードバックの処理状態を変更
+   * @param taskId タスクID
+   * @param feedbackId フィードバックID
+   * @param status 新しい状態
+   * @param appliedPhase 適用されたフェーズ
    */
-  private formatTechStack(plan: DevelopmentPlan): string {
-    const stack: string[] = [];
+  public updateFeedbackStatus(
+    taskId: string,
+    feedbackId: string,
+    status: 'pending' | 'processing' | 'applied' | 'rejected',
+    appliedPhase?: string
+  ): boolean {
+    const task = this.getTask(taskId);
+    if (!task) return false;
     
-    if (plan.technicalStack.frontend && plan.technicalStack.frontend.length > 0) {
-      stack.push(...plan.technicalStack.frontend);
+    const feedback = task.feedbackQueue.feedbacks.find(f => f.id === feedbackId);
+    if (!feedback) return false;
+    
+    feedback.status = status;
+    if (appliedPhase) {
+      feedback.appliedPhase = appliedPhase;
     }
     
-    if (plan.technicalStack.backend && plan.technicalStack.backend.length > 0) {
-      stack.push(...plan.technicalStack.backend);
-    }
-    
-    if (plan.technicalStack.database && plan.technicalStack.database.length > 0) {
-      stack.push(...plan.technicalStack.database);
-    }
-    
-    if (stack.length === 0 && plan.technicalStack.other && plan.technicalStack.other.length > 0) {
-      stack.push(...plan.technicalStack.other);
-    }
-    
-    return stack.join(', ');
+    return true;
   }
   
   /**
-   * プロジェクトをZIPアーカイブに圧縮
+   * ユーザー入力待機
    * @param task プロジェクトタスク
+   * @param timeout タイムアウト時間(ms)
    */
-  private async archiveProject(task: ProjectTask): Promise<string> {
-    return new Promise<string>((resolve, reject) => {
-      const projectName = path.basename(task.projectPath);
-      const zipPath = path.join(path.dirname(task.projectPath), `${projectName}.zip`);
+  private async waitForUserFeedback(task: ProjectTask, timeout: number): Promise<string | null> {
+    return new Promise<string | null>(resolve => {
+      // タイムアウトハンドラ
+      const timeoutHandler = setTimeout(() => {
+        this.pendingFeedbackRequests.delete(task.id);
+        resolve(null);
+      }, timeout);
       
-      const output = createWriteStream(zipPath);
-      const archive = archiver('zip', {
-        zlib: { level: 9 } // 最高圧縮率
+      // このタスクのフィードバック要求を登録
+      this.pendingFeedbackRequests.set(task.id, {
+        resolve,
+        timeoutHandler
       });
-      
-      output.on('close', () => {
-        logger.debug(`Project archived: ${zipPath}, size: ${archive.pointer()} bytes`);
-        resolve(zipPath);
-      });
-      
-      archive.on('error', (err) => {
-        logger.error(`Error archiving project: ${err.message}`);
-        reject(err);
-      });
-      
-      archive.pipe(output);
-      
-      // node_modulesディレクトリを除外してプロジェクトを圧縮
-      archive.glob('**/*', {
-        cwd: task.projectPath,
-        ignore: ['node_modules/**', '*.zip', '*.log', 'logs/**']
-      });
-      
-      archive.finalize();
     });
   }
 }

@@ -19,8 +19,9 @@ export interface FileInfo {
   path: string;              // ファイルパス
   description: string;       // ファイルの説明
   content?: string;          // ファイルの内容（未生成の場合はundefined）
-  status: 'pending' | 'generated' | 'modified' | 'error'; // ファイルの状態
+  status: 'pending' | 'generated' | 'modified' | 'error' | 'updated'; // ファイルの状態
   dependencies?: string[];   // 依存ファイル（あれば）
+  needsUpdate?: boolean;     // フィードバックにより更新が必要
 }
 
 /**
@@ -44,6 +45,7 @@ export interface DevelopmentPlan {
     description: string;                 // ステップの説明
     status: 'pending' | 'completed' | 'error'; // ステップの状態
   }[];
+  requiresDependencyUpdate?: boolean;    // 依存関係の更新が必要
 }
 
 /**
@@ -57,6 +59,46 @@ export interface ErrorInfo {
   lineNumber?: number;                   // エラー発生行（あれば）
   timeStamp: number;                     // エラー発生時刻
   attempts: number;                      // 修正試行回数
+}
+
+/**
+ * フィードバックの緊急度を表す型
+ */
+export type FeedbackUrgency = 'normal' | 'critical';
+
+/**
+ * フィードバックの優先度を表す型
+ */
+export type FeedbackPriority = 'normal' | 'high';
+
+/**
+ * フィードバックの種類を表す型
+ */
+export type FeedbackType = 'general' | 'plan' | 'code' | 'feature' | 'fix';
+
+/**
+ * ユーザーフィードバックの型
+ */
+export interface UserFeedback {
+  id: string;                           // フィードバックID
+  taskId: string;                       // タスクID
+  timestamp: number;                    // 受信時刻
+  content: string;                      // フィードバック内容
+  priority: FeedbackPriority;           // 優先度
+  urgency: FeedbackUrgency;             // 緊急度
+  type: FeedbackType;                   // フィードバックの種類
+  targetFile?: string;                  // 対象ファイル（あれば）
+  status: 'pending' | 'processing' | 'applied' | 'rejected'; // 状態
+  appliedPhase?: string;                // 適用されたフェーズ
+}
+
+/**
+ * フィードバックキューの型
+ */
+export interface FeedbackQueue {
+  taskId: string;                       // タスクID
+  feedbacks: UserFeedback[];            // フィードバック一覧
+  lastProcessedIndex: number;           // 最後に処理したインデックス
 }
 
 /**
@@ -76,6 +118,11 @@ export interface ProjectTask {
   projectPath: string;                   // プロジェクトパス
   lastProgressUpdate: number;            // 最終進捗更新時刻
   currentAction?: string;                // 現在の処理内容
+  feedbackQueue: FeedbackQueue;          // フィードバックキュー
+  hasCriticalFeedback: boolean;          // 緊急フィードバックの有無
+  additionalInstructions?: string;       // 追加指示（LLMプロンプトに使用）
+  requiresRecoding?: boolean;            // 再コーディングが必要
+  currentContextualFeedback?: string[];  // 現在のコンテキストに関するフィードバック
 }
 
 /**
@@ -119,6 +166,20 @@ export interface Planner {
    * @param task プロジェクトタスク
    */
   createPlan(task: ProjectTask): Promise<DevelopmentPlan>;
+  
+  /**
+   * フィードバックに基づいて計画を調整
+   * @param task プロジェクトタスク
+   * @param feedback フィードバック
+   */
+  adjustPlan(task: ProjectTask, feedback: string): Promise<DevelopmentPlan>;
+  
+  /**
+   * フィードバックに基づいて計画を再構築
+   * @param task プロジェクトタスク
+   * @param processingPrompt 処理用プロンプト
+   */
+  refactorPlan(task: ProjectTask, processingPrompt: string): Promise<DevelopmentPlan>;
 }
 
 /**
@@ -137,6 +198,28 @@ export interface Coder {
    * @param task プロジェクトタスク
    */
   installDependencies(task: ProjectTask): Promise<boolean>;
+  
+  /**
+   * フィードバックに基づいてファイルを再生成
+   * @param task プロジェクトタスク
+   * @param fileInfo 再生成するファイル情報
+   * @param existingContent 既存の内容
+   */
+  regenerateFile(task: ProjectTask, fileInfo: FileInfo, existingContent: string): Promise<string>;
+  
+  /**
+   * フィードバックに基づいてファイルを調整
+   * @param task プロジェクトタスク
+   * @param feedback フィードバック
+   */
+  adjustFileWithFeedback(task: ProjectTask, feedback: UserFeedback): Promise<boolean>;
+  
+  /**
+   * フィードバックに基づいて機能を追加
+   * @param task プロジェクトタスク
+   * @param feedback フィードバック
+   */
+  addFeatureFromFeedback(task: ProjectTask, feedback: UserFeedback): Promise<boolean>;
 }
 
 /**

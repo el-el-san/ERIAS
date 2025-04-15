@@ -1,121 +1,84 @@
-import logger from './logger';
-
 /**
- * 指定された時間待機するPromiseを返す
- * @param ms 待機時間（ミリ秒）
- */
-export const sleep = (ms: number): Promise<void> => {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-};
-
-/**
- * Promiseをタイムアウト付きで実行する
- * @param promise 実行するPromise
+ * Promiseにタイムアウトを設定する
+ * @param promise タイムアウトを設定するPromise
  * @param timeoutMs タイムアウト時間（ミリ秒）
  * @param errorMessage タイムアウト時のエラーメッセージ
  */
-export const withTimeout = <T>(
+export async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
-  errorMessage = 'Operation timed out'
-): Promise<T> => {
-  return new Promise((resolve, reject) => {
-    const timeoutId = setTimeout(() => {
+  errorMessage: string = 'Operation timed out'
+): Promise<T> {
+  let timeoutId: NodeJS.Timeout;
+  
+  // タイムアウト用のPromise
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
       reject(new Error(errorMessage));
     }, timeoutMs);
-
-    promise
-      .then((result) => {
-        clearTimeout(timeoutId);
-        resolve(result);
-      })
-      .catch((error) => {
-        clearTimeout(timeoutId);
-        reject(error);
-      });
   });
-};
+  
+  try {
+    // 元のPromiseとタイムアウトPromiseを競争させる
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    // タイムアウトタイマーをクリア
+    clearTimeout(timeoutId!);
+  }
+}
 
 /**
- * リトライロジック付きでPromiseを実行する
- * @param fn 実行する関数（Promiseを返す）
- * @param retries リトライ回数
- * @param delayMs リトライ間の待機時間（ミリ秒）
- * @param backoff バックオフ係数（待機時間の増加率）
- * @param onRetry リトライ時に実行するコールバック
+ * 指定された回数リトライする
+ * @param fn 実行する非同期関数
+ * @param maxRetries 最大リトライ回数
+ * @param delay リトライ間の遅延（ミリ秒）
+ * @param backoff 指数バックオフの係数（1より大きい場合は指数バックオフを適用）
  */
-export const withRetry = async <T>(
+export async function withRetry<T>(
   fn: () => Promise<T>,
-  retries = 3,
-  delayMs = 1000,
-  backoff = 2,
-  onRetry?: (error: Error, attempt: number) => void
-): Promise<T> => {
-  let lastError: Error = new Error('Unknown error');
-  let attempt = 0;
-
-  while (attempt <= retries) {
+  maxRetries: number = 3,
+  delay: number = 1000,
+  backoff: number = 2
+): Promise<T> {
+  let lastError: Error | undefined;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await fn();
     } catch (error) {
       lastError = error as Error;
-      attempt++;
-
-      if (attempt > retries) {
-        break;
+      
+      if (attempt < maxRetries) {
+        // 次のリトライまで待機
+        const waitTime = delay * Math.pow(backoff, attempt);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
       }
-
-      if (onRetry) {
-        onRetry(lastError, attempt);
-      } else {
-        logger.debug(`Operation failed, retrying (${attempt}/${retries}): ${lastError.message}`);
-      }
-
-      // 待機時間を計算（エクスポネンシャルバックオフ）
-      const delay = delayMs * Math.pow(backoff, attempt - 1);
-      await sleep(delay);
     }
   }
-
+  
   throw lastError;
-};
+}
 
 /**
- * 複数のPromiseを並列実行し、部分的な失敗を許容する
- * @param tasks 実行するPromiseを返す関数の配列
- * @param concurrency 同時並列数
+ * 複数のPromiseを並列実行し、すべての結果を配列で返す
+ * エラーが発生しても処理を継続し、結果とエラーを分けて返す
+ * @param promises 実行するPromiseの配列
  */
-export const runConcurrentTasks = async <T>(
-  tasks: (() => Promise<T>)[],
-  concurrency = 5
-): Promise<{ results: T[]; errors: Error[] }> => {
+export async function allSettledWithResults<T>(
+  promises: Promise<T>[]
+): Promise<{results: T[]; errors: Error[]}> {
   const results: T[] = [];
   const errors: Error[] = [];
-  let index = 0;
-
-  // 同時に実行する関数を管理
-  const runBatch = async (): Promise<void> => {
-    while (index < tasks.length) {
-      const currentIndex = index++;
-      const task = tasks[currentIndex];
-      
-      try {
-        const result = await task();
-        results.push(result);
-      } catch (err) {
-        errors.push(err as Error);
-        logger.error(`Task ${currentIndex} failed: ${(err as Error).message}`);
-      }
+  
+  const settled = await Promise.allSettled(promises);
+  
+  for (const result of settled) {
+    if (result.status === 'fulfilled') {
+      results.push(result.value);
+    } else {
+      errors.push(result.reason);
     }
-  };
-
-  // 指定された並列数でバッチを実行
-  const batchPromises: Promise<void>[] = [];
-  for (let i = 0; i < Math.min(concurrency, tasks.length); i++) {
-    batchPromises.push(runBatch());
   }
-
-  await Promise.all(batchPromises);
-
+  
   return { results, errors };
-};
+}

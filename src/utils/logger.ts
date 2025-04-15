@@ -1,80 +1,49 @@
 import winston from 'winston';
+import fs from 'fs';
 import path from 'path';
 import config from '../config/config';
 
-/**
- * 機密情報をマスクするための関数
- * APIキーやトークンを含む文字列をマスクして返す
- */
-const maskSensitiveInfo = (info: any): any => {
-  if (typeof info.message !== 'string') {
-    return info;
-  }
-  
-  // APIキーとトークンのマスク処理
-  const maskedMessage = info.message
-    .replace(new RegExp(config.discord.token, 'g'), '[DISCORD_TOKEN]')
-    .replace(new RegExp(config.llm.googleApiKey, 'g'), '[GOOGLE_API_KEY]');
-  
-  // OpenAI APIキーのマスク処理 (存在する場合)
-  if (config.llm.openaiApiKey) {
-    maskedMessage.replace(new RegExp(config.llm.openaiApiKey, 'g'), '[OPENAI_API_KEY]');
-  }
-  
-  // Anthropic APIキーのマスク処理 (存在する場合)
-  if (config.llm.anthropicApiKey) {
-    maskedMessage.replace(new RegExp(config.llm.anthropicApiKey, 'g'), '[ANTHROPIC_API_KEY]');
-  }
-  
-  info.message = maskedMessage;
-  return info;
-};
+// ログディレクトリを作成
+const logDir = config.logging.dir;
+if (!fs.existsSync(logDir)) {
+  fs.mkdirSync(logDir, { recursive: true });
+}
 
-// ロガーフォーマットの定義
-const formats = [
+// ログフォーマット
+const logFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-  winston.format(maskSensitiveInfo)(),
-  winston.format.printf(
-    (info) => `${info.timestamp} [${info.level.toUpperCase()}]: ${info.message}`
-  ),
-];
+  winston.format.errors({ stack: true }),
+  winston.format.printf(info => {
+    return `${info.timestamp} ${info.level.toUpperCase()}: ${info.message}${info.stack ? '\n' + info.stack : ''}`;
+  })
+);
 
-// JSONフォーマットの定義（ファイル出力用）
-const jsonFormats = [
-  winston.format.timestamp(),
-  winston.format(maskSensitiveInfo)(),
-  winston.format.json(),
-];
-
-// ログディレクトリのパス
-const logsDir = path.join(process.cwd(), 'logs');
-
-// ロガーの作成
+// ロガーを設定
 const logger = winston.createLogger({
   level: config.logging.level,
-  format: winston.format.combine(...formats),
+  format: logFormat,
   transports: [
     // コンソール出力
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.colorize(),
-        ...formats
-      ),
+        logFormat
+      )
     }),
-    
-    // エラーログファイル出力
-    new winston.transports.File({
-      filename: path.join(logsDir, 'error.log'),
+    // ファイル出力（通常ログ）
+    new winston.transports.File({ 
+      filename: path.join(logDir, 'app.log'),
+      maxsize: 5242880, // 5MB
+      maxFiles: 5,
+    }),
+    // ファイル出力（エラーログ）
+    new winston.transports.File({ 
+      filename: path.join(logDir, 'error.log'),
       level: 'error',
-      format: winston.format.combine(...jsonFormats),
-    }),
-    
-    // すべてのログを記録するファイル出力
-    new winston.transports.File({
-      filename: path.join(logsDir, 'combined.log'),
-      format: winston.format.combine(...jsonFormats),
-    }),
-  ],
+      maxsize: 5242880, // 5MB
+      maxFiles: 5,
+    })
+  ]
 });
 
 export default logger;

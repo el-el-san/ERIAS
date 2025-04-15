@@ -1,238 +1,143 @@
-import { exec, spawn, SpawnOptions } from 'child_process';
+import { exec, ExecOptions } from 'child_process';
 import { promisify } from 'util';
-import path from 'path';
 import logger from '../utils/logger';
-import { resolveSafePath, getProjectPath } from './fileSystem';
-import { ToolDefinition } from '../llm/toolRegistry';
-import { withTimeout } from '../utils/asyncUtils';
 
-// 安全に実行可能なコマンドのホワイトリスト
-const SAFE_COMMANDS = [
-  'npm', 'npx', 'node', 'yarn', 'jest', 'mocha',
-  'tsc', 'eslint', 'prettier', 'webpack', 'vite',
-];
+// CommandResult型の定義とエクスポート
+export type CommandResult = { success: boolean; output: string; } | { stdout: string; stderr: string; };
+// ExecOptionsもエクスポート
+export { ExecOptions };
 
-// execのPromise版
+// execを非同期で呼び出せるようにPromisify
 const execAsync = promisify(exec);
 
 /**
- * コマンドが安全かどうかチェック
+ * シェルコマンドを実行
  * @param command 実行するコマンド
+ * @param options execオプション
+ * @param workingDir 作業ディレクトリ
  */
-const isSafeCommand = (command: string): boolean => {
-  const baseCommand = command.split(' ')[0].toLowerCase();
-  return SAFE_COMMANDS.includes(baseCommand);
-};
-
-/**
- * コマンド実行ツール
- * ホワイトリストに含まれるコマンドのみをプロジェクトディレクトリ内で実行
- */
-export const runCommandTool: ToolDefinition = {
-  name: 'runCommand',
-  description: 'Run a command in the project directory',
-  parameters: {
-    type: 'object',
-    required: ['command'],
-    properties: {
-      command: {
-        type: 'string',
-        description: 'Command to run (npm, npx, node, etc.)',
-      },
-      cwd: {
-        type: 'string',
-        description: 'Working directory relative to project root',
-      },
-      timeout: {
-        type: 'number',
-        description: 'Timeout in milliseconds (default: 60000)',
-      },
-    },
-  },
-  execute: async (args: { command: string; cwd?: string; timeout?: number; projectId: string }): Promise<{ stdout: string; stderr: string; exitCode: number }> => {
-    const command = args.command.trim();
+export async function executeCommand(
+  command: string,
+  options: ExecOptions = {},
+  workingDir?: string
+): Promise<{ stdout: string; stderr: string; }> {
+  try {
+    // 作業ディレクトリを設定
+    const execOptions: ExecOptions = {
+      ...options,
+      cwd: workingDir || process.cwd(),
+      maxBuffer: 1024 * 1024 * 10, // 10MB
+    };
     
-    // コマンドの安全性チェック
-    if (!isSafeCommand(command)) {
-      throw new Error(`Security violation: Command ${command.split(' ')[0]} is not in the whitelist`);
+    logger.debug(`Executing command: ${command} in ${execOptions.cwd}`);
+    
+    // コマンド実行
+    const { stdout, stderr } = await execAsync(command, execOptions);
+    
+    if (stderr) {
+      logger.warn(`Command stderr: ${stderr}`);
     }
     
-    const projectPath = getProjectPath(args.projectId);
-    const workingDir = args.cwd
-      ? resolveSafePath(projectPath, args.cwd)
-      : projectPath;
+    return { stdout, stderr };
+  } catch (error) {
+    // エラーが発生した場合でもstdoutとstderrを返す
+    const execError = error as { code: number; stdout: string; stderr: string; };
+    logger.error(`Command execution failed with code ${execError.code}: ${command}\n${execError.stderr}`);
     
-    logger.debug(`Running command: ${command} in ${workingDir}`);
-    
-    try {
-      // タイムアウト付きでコマンド実行
-      const timeout = args.timeout || 60000; // デフォルト1分
-      const { stdout, stderr } = await withTimeout(
-        execAsync(command, { cwd: workingDir }),
-        timeout,
-        `Command execution timed out after ${timeout}ms: ${command}`
-      );
-      
-      return {
-        stdout: stdout.toString(),
-        stderr: stderr.toString(),
-        exitCode: 0,
-      };
-    } catch (error: any) {
-      // execはエラー時に終了コードを返す
-      logger.error(`Command execution error: ${error.message}`);
-      return {
-        stdout: error.stdout ? error.stdout.toString() : '',
-        stderr: error.stderr ? error.stderr.toString() : error.message,
-        exitCode: error.code || 1,
-      };
-    }
-  },
-};
+    return {
+      stdout: execError.stdout || '',
+      stderr: execError.stderr || (error as Error).message,
+    };
+  }
+}
 
 /**
- * npm installコマンド専用のツール
- * package.jsonに基づく依存関係のインストールや指定パッケージのインストールを実行
+ * npm installコマンドを実行
+ * @param projectPath プロジェクトパス
+ * @param dependencies インストールする依存パッケージのリスト
+ * @param isDev 開発依存パッケージかどうか
  */
-export const npmInstallTool: ToolDefinition = {
-  name: 'npmInstall',
-  description: 'Install npm dependencies',
-  parameters: {
-    type: 'object',
-    required: [],
-    properties: {
-      packages: {
-        type: 'array',
-        items: {
-          type: 'string',
-        },
-        description: 'List of packages to install. If empty, install all dependencies from package.json',
-      },
-      dev: {
-        type: 'boolean',
-        description: 'Whether to install as dev dependencies (default: false)',
-      },
-      cwd: {
-        type: 'string',
-        description: 'Working directory relative to project root',
-      },
-      timeout: {
-        type: 'number',
-        description: 'Timeout in milliseconds (default: 300000)',
-      },
-    },
-  },
-  execute: async (args: { packages?: string[]; dev?: boolean; cwd?: string; timeout?: number; projectId: string }): Promise<{ success: boolean; output: string }> => {
-    const projectPath = getProjectPath(args.projectId);
-    const workingDir = args.cwd
-      ? resolveSafePath(projectPath, args.cwd)
-      : projectPath;
+export async function executeNpmInstall(
+  projectPath: string,
+  dependencies: string | string[] = [],
+  isDev: boolean = false
+): Promise<boolean> {
+  try {
+    // 依存パッケージのリストを作成
+    const packagesList = Array.isArray(dependencies) ? dependencies.join(' ') : dependencies;
     
     // npm installコマンドを構築
     let command = 'npm install';
-    if (args.packages && args.packages.length > 0) {
-      // 特定のパッケージをインストール
-      command += ` ${args.packages.join(' ')}`;
-      if (args.dev) {
-        command += ' --save-dev';
-      }
+    
+    // 依存パッケージが指定されている場合
+    if (packagesList) {
+      command += ` ${packagesList}`;
     }
     
-    logger.debug(`Running npm install: ${command} in ${workingDir}`);
-    
-    try {
-      // タイムアウト付きでnpm installを実行（デフォルト5分）
-      const timeout = args.timeout || 300000;
-      const { stdout, stderr } = await withTimeout(
-        execAsync(command, { cwd: workingDir }),
-        timeout,
-        `npm install timed out after ${timeout}ms`
-      );
-      
-      return {
-        success: true,
-        output: stdout.toString(),
-      };
-    } catch (error: any) {
-      logger.error(`npm install error: ${error.message}`);
-      return {
-        success: false,
-        output: error.stderr ? error.stderr.toString() : error.message,
-      };
+    // 開発依存パッケージの場合は --save-dev オプションを追加
+    if (isDev) {
+      command += ' --save-dev';
     }
-  },
-};
+    
+    // コマンド実行
+    const { stderr } = await executeCommand(command, {}, projectPath);
+    
+    // エラーチェック
+    if (stderr && stderr.includes('ERR!')) {
+      logger.error(`npm install failed: ${stderr}`);
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    logger.error(`npm install failed: ${(error as Error).message}`);
+    return false;
+  }
+}
 
 /**
- * テスト実行ツール
- * Jest、Mocha等のテストフレームワークを実行
+ * npmスクリプトを実行
+ * @param projectPath プロジェクトパス
+ * @param script 実行するスクリプト名
+ * @param args コマンドライン引数（オプション）
  */
-export const runTestsTool: ToolDefinition = {
-  name: 'runTests',
-  description: 'Run project tests',
-  parameters: {
-    type: 'object',
-    required: [],
-    properties: {
-      command: {
-        type: 'string',
-        description: 'Test command (default: "npm test")',
-      },
-      cwd: {
-        type: 'string',
-        description: 'Working directory relative to project root',
-      },
-      timeout: {
-        type: 'number',
-        description: 'Timeout in milliseconds (default: 120000)',
-      },
-    },
-  },
-  execute: async (args: { command?: string; cwd?: string; timeout?: number; projectId: string }): Promise<{ success: boolean; output: string; exitCode: number }> => {
-    const projectPath = getProjectPath(args.projectId);
-    const workingDir = args.cwd
-      ? resolveSafePath(projectPath, args.cwd)
-      : projectPath;
+export async function executeNpmScript(
+  projectPath: string,
+  script: string,
+  args: string[] = []
+): Promise<{ success: boolean; output: string; }> {
+  try {
+    // npm run スクリプト（引数があれば追加）
+    const command = `npm run ${script}${args.length > 0 ? ' -- ' + args.join(' ') : ''}`;
     
-    // テストコマンドを設定（デフォルトは "npm test"）
-    const command = args.command || 'npm test';
+    // コマンド実行
+    const { stdout, stderr } = await executeCommand(command, {}, projectPath);
     
-    logger.debug(`Running tests: ${command} in ${workingDir}`);
-    
-    try {
-      // タイムアウト付きでテスト実行（デフォルト2分）
-      const timeout = args.timeout || 120000;
-      const { stdout, stderr } = await withTimeout(
-        execAsync(command, { cwd: workingDir }),
-        timeout,
-        `Tests timed out after ${timeout}ms`
-      );
-      
-      return {
-        success: true,
-        output: stdout.toString() + '\n' + stderr.toString(),
-        exitCode: 0,
-      };
-    } catch (error: any) {
-      logger.error(`Test execution error: ${error.message}`);
-      const success = false;
-      const output = error.stdout ? error.stdout.toString() : '';
-      const errorOutput = error.stderr ? error.stderr.toString() : error.message;
-      
-      return {
-        success,
-        output: output + '\n' + errorOutput,
-        exitCode: error.code || 1,
-      };
+    // エラーチェック
+    if (stderr && stderr.includes('ERR!')) {
+      logger.error(`npm script '${script}' failed: ${stderr}`);
+      return { success: false, output: stderr };
     }
+    
+    return { success: true, output: stdout };
+  } catch (error) {
+    logger.error(`npm script '${script}' failed: ${(error as Error).message}`);
+    return { success: false, output: (error as Error).message };
+  }
+}
+
+// commandToolsのエクスポート
+export const commandTools = [
+  {
+    name: 'executeCommand',
+    function: executeCommand
   },
-};
-
-// コマンド実行ツール一覧
-export const commandTools: ToolDefinition[] = [
-  runCommandTool,
-  npmInstallTool,
-  runTestsTool,
+  {
+    name: 'npmInstall',
+    function: executeNpmInstall
+  },
+  {
+    name: 'executeNpmScript',
+    function: executeNpmScript
+  }
 ];
-
-export default commandTools;

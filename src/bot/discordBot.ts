@@ -6,6 +6,7 @@ import config from '../config/config';
 import path from 'path';
 import fs from 'fs';
 import { GeminiClient } from '../llm/geminiClient';
+import { FeedbackMessageHandler } from './feedbackMessageHandler';
 
 /**
  * Discordボットインターフェイス
@@ -14,6 +15,7 @@ import { GeminiClient } from '../llm/geminiClient';
 export class DiscordBot {
   private client: Client;
   private agentCore: AgentCore;
+  private feedbackHandler: FeedbackMessageHandler;
   private commandPrefix: string = '/';
   private isReady: boolean = false;
   
@@ -26,6 +28,7 @@ export class DiscordBot {
    */
   constructor(agentCore: AgentCore) {
     this.agentCore = agentCore;
+    this.feedbackHandler = new FeedbackMessageHandler(agentCore);
     
     // Discordクライアントを初期化
     this.client = new Client({
@@ -112,6 +115,12 @@ export class DiscordBot {
         !config.discord.allowedUserIds.includes(message.author.id)) {
       logger.warn(`Message from non-allowed user: ${message.author.id}`);
       return;
+    }
+    
+    // task:IDフォーマットのフィードバックメッセージを処理
+    if (message.content.includes('task:')) {
+      const handled = await this.feedbackHandler.handleMessage(message);
+      if (handled) return;
     }
     
     // コマンドプレフィックスで始まるかチェック
@@ -235,11 +244,23 @@ export class DiscordBot {
 \`${this.commandPrefix}cancel [タスクID]\` - 実行中のプロジェクト生成をキャンセル
 \`${this.commandPrefix}help\` - このヘルプを表示
 
+**フィードバック機能**
+\`task:タスクID [内容]\` - 実行中プロジェクトに追加の指示を提供
+
+以下のタグも使用できます：
+#urgent または #緊急 - 緊急の指示として処理
+#feature または #機能 - 新機能の追加として処理
+#fix または #修正 - バグ修正指示として処理
+#code または #コード - コード修正指示として処理
+file:パス - 特定ファイルに対する指示
+
 **通常会話**
 スラッシュ(/)から始まらないメッセージには、AIがチャット形式で応答します。質問やコードの相談などにご利用ください。
 
 **使用例**
 \`${this.commandPrefix}new Reactを使用したシンプルなTODOアプリを作成してください。LocalStorageでデータを保存し、タスクの追加、編集、削除、完了のマーキングができるようにしてください。\`
+
+\`task:abc123 #urgent 検索機能も追加してください\` - 実行中タスクに緊急の指示を追加
 `;
     
     await message.reply(helpText);
