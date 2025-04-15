@@ -102,6 +102,12 @@ export class ProjectGenerator {
     await notifyProgressFn(task, '依存関係をインストール中...');
     await this.coder.installDependencies(task);
     
++    // --- ここから追加 ---
++    // README.md を生成
++    await notifyProgressFn(task, 'README.md を生成中...');
++    await this.coder.generateReadme(task);
++    // --- ここまで追加 ---
++
     // コーディング完了の通知とフィードバック募集
     await notifyProgressFn(task, `コーディングが完了しました。
 \`task:${task.id}\` をメンションして追加指示を出すことができます。次のフェーズに進む前に30秒間待機します。`);

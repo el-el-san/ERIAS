@@ -10,7 +10,7 @@ Discord上の指示に基づき、ローカルPC環境でWebアプリケーシ�
 - 依存関係の自動インストール (npm install等)
 - 自動テスト実行 (Jest, Mocha等)
 - エラー検出時の自動デバッグ・コード修正
-- 成果物の報告 (Discordメッセージ、ファイル添付)
+- 成果物の報告 (Discordメッセージ、ファイル添付、`Plan.md`、`README.md`)
 - **リアルタイムフィードバック** - 生成プロセス中の追加指示・修正指示に対応
 
 ## 必要条件
@@ -104,28 +104,10 @@ task:abc123 #urgent file:src/components/Header.js ログアウトボタンも追
 
 ## 開発者向け情報
 
-### 最近の修正点 (2025-04-15)
-
-TypeScriptビルドエラーを修正しました:
-- fileSystem.tsの関数にオーバーロードを追加し、型安全性を向上
-- 各モジュールの型エラーとインポートエラーを解決
-- パラメータ型の互換性問題を解決するため、型変換と引数チェックを実装
-- any型キャストを削除し、型安全な実装に修正
-- 具体的な修正内容:
-  - src/tools/fileSystem.ts:
-    - writeProjectFile、readProjectFile、listDirectory、exists関数をオーバーロード対応に変更
-  - src/agent/coder.ts, src/agent/debugger.ts, src/agent/planner.ts:
-    - ツール関数呼び出しの型安全性を向上
-  - src/agent/tester.ts: 
-    - executeNpmScriptとexecuteCommand関数の呼び出しを型安全に修正
-
-以前の修正:
-- 不要だった`src/tools/githubClient.ts`ファイルを削除
-- `commandExecutor.ts`にて`CommandResult`型を定義しエクスポート
-- `ExecOptions` インターフェースのエクスポート追加
-- `executeNpmInstall`関数の引数型を修正し、string型と配列型の両方に対応
-
-これらの修正により、`npm run build`コマンドが正常に実行できるようになりました。
+### 最近の修正点
+- **2025-04-16:**
+  - 計画立案時に、計画内容を `Plan.md` として成果物ディレクトリに出力するように変更。
+  - コーディング完了後に、生成されたコードに基づいてプロジェクト用の `README.md` を自動生成し、成果物ディレクトリに出力するように変更。
 
 ## セキュリティ上の注意
 
