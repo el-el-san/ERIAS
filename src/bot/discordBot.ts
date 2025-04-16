@@ -7,6 +7,7 @@ import path from 'path';
 import fs from 'fs';
 import { GeminiClient } from '../llm/geminiClient';
 import { FeedbackMessageHandler } from './feedbackMessageHandler';
+import { conversationManager } from '../llm/conversationManager';
 
 /**
  * Discordボットインターフェイス
@@ -163,6 +164,10 @@ export class DiscordBot {
         case 'cancel':
           await this.handleCancelCommand(message, args[0]);
           break;
+          
+        case 'clear':
+          await this.handleClearCommand(message);
+          break;
         
         default:
           // 不明なコマンド
@@ -186,7 +191,13 @@ export class DiscordBot {
       const geminiClient = new GeminiClient();
       
       // システムプロンプト
-      const systemPrompt = "あなたはフレンドリーなアシスタントです。ユーザーからの質問に簡潔かつ役立つ形で答えてください。コードが必要な場合は実用的なコード例を提供してください。";
+      const systemPrompt = "あなたはフレンドリーなアシスタントです。ユーザーからの質問に簡潔かつ役立つ形で答えてください。コードが必要な場合は実用的なコード例を提供してください。前回までの会話を考慮して対応してください。";
+      
+      // 会話履歴を取得
+      const history = conversationManager.getConversationHistory(
+        message.author.id,
+        message.channel.id
+      );
       
       // LLMにメッセージを送信
       logger.info(`Sending conversation to LLM from user ${message.author.tag}: ${message.content.substring(0, 100)}...`);
@@ -194,7 +205,26 @@ export class DiscordBot {
         message.content,
         systemPrompt,
         undefined,
-        60000 // 60秒タイムアウト
+        60000, // 60秒タイムアウト
+        history
+      );
+      
+      // 会話履歴にユーザーのメッセージを追加
+      conversationManager.addMessage(
+        message.author.id,
+        message.channel.id,
+        message.guild ? message.guild.id : 'dm',
+        message.content,
+        false // ユーザーメッセージ
+      );
+      
+      // 会話履歴にAIのメッセージを追加
+      conversationManager.addMessage(
+        message.author.id,
+        message.channel.id,
+        message.guild ? message.guild.id : 'dm',
+        response,
+        true // AIのメッセージ
       );
       
       // 応答が長すぎる場合は分割して送信
@@ -232,6 +262,29 @@ export class DiscordBot {
   }
   
   /**
+   * 会話履歴クリアコマンド処理
+   * @param message メッセージオブジェクト
+   */
+  private async handleClearCommand(message: Message): Promise<void> {
+    try {
+      const result = conversationManager.clearConversationHistory(
+        message.author.id,
+        message.channel.id
+      );
+      
+      if (result) {
+        await message.reply('会話履歴をクリアしました。新しい会話を始めましょう。');
+        logger.info(`Cleared conversation history for user ${message.author.tag} in channel ${message.channel.id}`);
+      } else {
+        await message.reply('会話履歴はありませんでした。');
+      }
+    } catch (error) {
+      logger.error(`Error clearing conversation history: ${(error as Error).message}`);
+      await message.reply(`会話履歴のクリア中にエラーが発生しました: ${(error as Error).message}`);
+    }
+  }
+  
+  /**
    * helpコマンド処理
    * @param message メッセージオブジェクト
    */
@@ -242,6 +295,7 @@ export class DiscordBot {
 \`${this.commandPrefix}new [仕様]\` - 新しいプロジェクトを生成
 \`${this.commandPrefix}status [タスクID]\` - プロジェクト生成の状態を確認
 \`${this.commandPrefix}cancel [タスクID]\` - 実行中のプロジェクト生成をキャンセル
+\`${this.commandPrefix}clear\` - 現在の会話履歴をクリア
 \`${this.commandPrefix}help\` - このヘルプを表示
 
 **フィードバック機能**
@@ -252,10 +306,11 @@ export class DiscordBot {
 #feature または #機能 - 新機能の追加として処理
 #fix または #修正 - バグ修正指示として処理
 #code または #コード - コード修正指示として処理
-file:パス - 特定ファイルに対する指示
+file:パス - 特定ファイルに対する指示（例: \`file:src/App.js\`）
 
 **通常会話**
 スラッシュ(/)から始まらないメッセージには、AIがチャット形式で応答します。質問やコードの相談などにご利用ください。
+会話履歴は保存され、AIは前回までの話を考慮して応答します。\`${this.commandPrefix}clear\`で履歴をクリアできます。
 
 **使用例**
 \`${this.commandPrefix}new Reactを使用したシンプルなTODOアプリを作成してください。LocalStorageでデータを保存し、タスクの追加、編集、削除、完了のマーキングができるようにしてください。\`

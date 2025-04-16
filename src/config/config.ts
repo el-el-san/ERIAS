@@ -4,6 +4,14 @@ import path from 'path';
 // .envファイルを読み込む
 dotenv.config();
 
+// 会話履歴の型定義
+interface ConversationConfig {
+  maxMessagesPerSession: number;
+  sessionExpiryTimeMs: number;
+  persistSessions: boolean;
+  sessionsDir: string;
+}
+
 // 環境変数から設定を読み込み、デフォルト値を設定
 const config = {
   version: '0.1.0',
@@ -50,6 +58,18 @@ const config = {
     level: process.env.LOG_LEVEL || 'info',
     dir: path.join(process.cwd(), 'logs'),
   },
+  
+  // 会話履歴設定
+  conversation: {
+    // セッションごとの最大メッセージ数
+    maxMessagesPerSession: parseInt(process.env.MAX_MESSAGES_PER_SESSION || '10'),
+    // セッション有効期限 (ミリ秒) - デフォルト3時間
+    sessionExpiryTimeMs: parseInt(process.env.SESSION_EXPIRY_TIME_MS || '10800000'),
+    // セッションを永続化するかどうか
+    persistSessions: process.env.PERSIST_SESSIONS === 'true',
+    // セッション保存ディレクトリ
+    sessionsDir: process.env.SESSIONS_DIR || path.join(process.cwd(), 'conversation_history'),
+  } as ConversationConfig,
 };
 
 // 設定の検証

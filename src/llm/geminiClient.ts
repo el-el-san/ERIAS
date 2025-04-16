@@ -1,7 +1,8 @@
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, Content } from '@google/generative-ai';
 import logger from '../utils/logger';
 import config from '../config/config';
 import { withRetry } from '../utils/asyncUtils';
+import { ConversationMessage } from './conversationManager';
 
 /**
  * Google Gemini APIクライアント
@@ -29,12 +30,14 @@ export class GeminiClient {
    * @param systemPrompt システムプロンプト（指示）
    * @param temperature 温度パラメータ（0.0〜1.0、高いほど多様な出力）
    * @param timeout タイムアウト（ミリ秒）
+   * @param history 会話履歴（オプション）
    */
   public async generateContent(
     prompt: string,
     systemPrompt?: string,
     temperature: number = 0.7,
-    timeout: number = 30000
+    timeout: number = 30000,
+    history?: ConversationMessage[]
   ): Promise<string> {
     try {
       // リトライ付きで実行
@@ -52,17 +55,42 @@ export class GeminiClient {
             maxOutputTokens: 8192,
           };
           
+          // 会話履歴があれば変換して追加
+          const contents: Content[] = [];
+          
+          // システムプロンプトがあれば先頭に追加
+          if (systemPrompt) {
+            contents.push({
+              role: 'user',
+              parts: [{ text: systemPrompt }]
+            });
+            
+            contents.push({
+              role: 'model',
+              parts: [{ text: 'ご指示を理解しました。これからの会話でそれに基づいて対応します。' }]
+            });
+          }
+          
+          // 会話履歴を追加
+          if (history && history.length > 0) {
+            for (const message of history) {
+              contents.push({
+                role: message.role === 'user' ? 'user' : 'model',
+                parts: [{ text: message.content }]
+              });
+            }
+          }
+          
+          // 現在のユーザーメッセージを追加
+          contents.push({
+            role: 'user',
+            parts: [{ text: prompt }]
+          });
+          
           // Gemini APIリクエスト
           const response = await Promise.race([
             generativeModel.generateContent({
-              contents: [
-                {
-                  role: 'user',
-                  parts: [
-                    { text: systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt }
-                  ]
-                }
-              ],
+              contents,
               generationConfig,
               safetySettings: [
                 {
@@ -108,12 +136,14 @@ export class GeminiClient {
    * @param systemPrompt システムプロンプト（指示）
    * @param temperature 温度パラメータ（0.0〜1.0、高いほど多様な出力）
    * @param timeout タイムアウト（ミリ秒）
+   * @param history 会話履歴（オプション）
    */
   public async runToolConversation(
     prompt: string,
     systemPrompt?: string,
     temperature: number = 0.7,
-    timeout: number = 60000
+    timeout: number = 60000,
+    history?: ConversationMessage[]
   ): Promise<string> {
     try {
       // リトライ付きで実行
@@ -131,17 +161,42 @@ export class GeminiClient {
             maxOutputTokens: 8192,
           };
           
+          // 会話履歴があれば変換して追加
+          const contents: Content[] = [];
+          
+          // システムプロンプトがあれば先頭に追加
+          if (systemPrompt) {
+            contents.push({
+              role: 'user',
+              parts: [{ text: systemPrompt }]
+            });
+            
+            contents.push({
+              role: 'model',
+              parts: [{ text: 'ご指示を理解しました。これからの会話でそれに基づいて対応します。' }]
+            });
+          }
+          
+          // 会話履歴を追加
+          if (history && history.length > 0) {
+            for (const message of history) {
+              contents.push({
+                role: message.role === 'user' ? 'user' : 'model',
+                parts: [{ text: message.content }]
+              });
+            }
+          }
+          
+          // 現在のユーザーメッセージを追加
+          contents.push({
+            role: 'user',
+            parts: [{ text: prompt }]
+          });
+          
           // Gemini APIリクエスト
           const response = await Promise.race([
             generativeModel.generateContent({
-              contents: [
-                {
-                  role: 'user',
-                  parts: [
-                    { text: systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt }
-                  ]
-                }
-              ],
+              contents,
               generationConfig,
               safetySettings: [
                 {
