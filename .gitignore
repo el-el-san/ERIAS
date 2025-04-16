@@ -35,3 +35,5 @@ coverage/
 .npm
 .eslintcache
 package-lock.json
+ToDo.md 
+TREE.md 
