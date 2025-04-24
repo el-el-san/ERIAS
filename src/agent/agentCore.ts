@@ -81,16 +81,19 @@ export class AgentCore {
    * 進捗更新を全リスナーに通知
    * @param task プロジェクトタスク
    * @param message 進捗メッセージ
+   * @param isPartial 部分的な更新かどうか（ストリーミング用）
    */
-  public async notifyProgress(task: ProjectTask, message: string): Promise<void> {
-    task.lastProgressUpdate = Date.now();
-    task.currentAction = message;
-    
-    logger.info(`[${task.id}] ${message}`);
+  public async notifyProgress(task: ProjectTask, message: string, isPartial: boolean = false): Promise<void> {
+    if (!isPartial) {
+      task.lastProgressUpdate = Date.now();
+      task.currentAction = message;
+      
+      logger.info(`[${task.id}] ${message}`);
+    }
     
     for (const listener of this.progressListeners) {
       try {
-        await listener(task, message);
+        await listener(task, message, isPartial);
       } catch (error) {
         logger.error(`Error in progress listener: ${(error as Error).message}`);
       }

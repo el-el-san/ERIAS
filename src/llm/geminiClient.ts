@@ -235,4 +235,107 @@ export class GeminiClient {
       throw error;
     }
   }
+
+  /**
+   * ストリーミングテキスト生成
+   * @param prompt 入力プロンプト
+   * @param callback ストリーミング応答の各チャンクを処理するコールバック関数
+   * @param systemPrompt システムプロンプト（指示）
+   * @param temperature 温度パラメータ（0.0〜1.0、高いほど多様な出力）
+   * @param timeout タイムアウト（ミリ秒）
+   * @param history 会話履歴（オプション）
+   */
+  public async generateContentStream(
+    prompt: string,
+    callback: (chunk: string, isComplete: boolean) => Promise<void>,
+    systemPrompt?: string,
+    temperature: number = 0.7,
+    timeout: number = 30000,
+    history?: ConversationMessage[]
+  ): Promise<string> {
+    try {
+      const generativeModel = this.client.getGenerativeModel({
+        model: this.model,
+      });
+      
+      // 生成パラメータ
+      const generationConfig = {
+        temperature,
+        topK: 16,
+        topP: 0.95,
+        maxOutputTokens: 8192,
+      };
+      
+      // 会話履歴があれば変換して追加
+      const contents: Content[] = [];
+      
+      // システムプロンプトがあれば先頭に追加
+      if (systemPrompt) {
+        contents.push({
+          role: 'user',
+          parts: [{ text: systemPrompt }]
+        });
+        
+        contents.push({
+          role: 'model',
+          parts: [{ text: 'ご指示を理解しました。これからの会話でそれに基づいて対応します。' }]
+        });
+      }
+      
+      // 会話履歴を追加
+      if (history && history.length > 0) {
+        for (const message of history) {
+          contents.push({
+            role: message.role === 'user' ? 'user' : 'model',
+            parts: [{ text: message.content }]
+          });
+        }
+      }
+      
+      // 現在のユーザーメッセージを追加
+      contents.push({
+        role: 'user',
+        parts: [{ text: prompt }]
+      });
+      
+      // Gemini APIストリーミングリクエスト
+      const result = await generativeModel.generateContentStream({
+        contents,
+        generationConfig,
+        safetySettings: [
+          {
+            category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE
+          },
+          {
+            category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE
+          },
+          {
+            category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE
+          },
+          {
+            category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE
+          }
+        ]
+      });
+      
+      let fullResponse = '';
+      
+      for await (const chunk of result.stream) {
+        const chunkText = chunk.text();
+        fullResponse += chunkText;
+        await callback(chunkText, false);
+      }
+      
+      await callback('', true);
+      
+      return fullResponse;
+    } catch (error) {
+      logger.error(`Gemini API streaming error: ${(error as Error).message}`);
+      throw error;
+    }
+  }
 }
