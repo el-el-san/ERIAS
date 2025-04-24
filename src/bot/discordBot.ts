@@ -1,4 +1,4 @@
-import { Client, Events, GatewayIntentBits, Message, TextChannel, AttachmentBuilder } from 'discord.js';
+import { Client, Events, GatewayIntentBits, Message, TextChannel, AttachmentBuilder, REST, Routes } from 'discord.js';
 import { AgentCore } from '../agent/agentCore';
 import { ProjectTask, ProgressListener } from '../agent/types';
 import logger from '../utils/logger';
@@ -8,6 +8,7 @@ import fs from 'fs';
 import { GeminiClient } from '../llm/geminiClient';
 import { FeedbackMessageHandler } from './feedbackMessageHandler';
 import { conversationManager } from '../llm/conversationManager';
+import { CommandHandler } from './commandHandler';
 
 /**
  * Discordボットインターフェイス
@@ -17,6 +18,7 @@ export class DiscordBot {
   private client: Client;
   private agentCore: AgentCore;
   private feedbackHandler: FeedbackMessageHandler;
+  private commandHandler: CommandHandler; // 追加: CommandHandlerのインスタンス
   private commandPrefix: string = '/';
   private isReady: boolean = false;
   
@@ -30,6 +32,7 @@ export class DiscordBot {
   constructor(agentCore: AgentCore) {
     this.agentCore = agentCore;
     this.feedbackHandler = new FeedbackMessageHandler(agentCore);
+    this.commandHandler = new CommandHandler(agentCore); // 追加: CommandHandlerの初期化
     
     // Discordクライアントを初期化
     this.client = new Client({
@@ -82,10 +85,17 @@ export class DiscordBot {
     this.client.once(Events.ClientReady, (client) => {
       this.isReady = true;
       logger.info(`Discord bot logged in as ${client.user.tag}`);
+      
+      this.registerCommands(client.user.id);
     });
     
     // メッセージ受信イベント
     this.client.on(Events.MessageCreate, this.handleMessage.bind(this));
+    
+    this.client.on(Events.InteractionCreate, async (interaction) => {
+      if (!interaction.isChatInputCommand()) return;
+      await this.commandHandler.handleSlashCommand(interaction);
+    });
     
     // エラーイベント
     this.client.on('error', (error) => {
@@ -492,6 +502,29 @@ file:パス - 特定ファイルに対する指示（例: \`file:src/App.js\`）
       return `${minutes}分${secs}秒`;
     } else {
       return `${secs}秒`;
+    }
+  }
+  
+  /**
+   * スラッシュコマンドを登録
+   * @param clientId ボットのクライアントID
+   */
+  private async registerCommands(clientId: string): Promise<void> {
+    try {
+      const commands = this.commandHandler.getSlashCommands();
+      
+      const rest = new REST({ version: '10' }).setToken(config.discord.token);
+      
+      logger.info('Registering slash commands...');
+      
+      await rest.put(
+        Routes.applicationCommands(clientId),
+        { body: commands }
+      );
+      
+      logger.info('Slash commands registered successfully');
+    } catch (error) {
+      logger.error(`Error registering slash commands: ${(error as Error).message}`);
     }
   }
 }
