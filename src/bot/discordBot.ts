@@ -197,6 +197,8 @@ export class DiscordBot {
    */
   private async handleConversation(message: Message): Promise<void> {
     try {
+      let responseMsg = await message.reply('考え中...');
+      
       // Geminiクライアントからインスタンスを取得
       const geminiClient = new GeminiClient();
       
@@ -209,16 +211,6 @@ export class DiscordBot {
         message.channel.id
       );
       
-      // LLMにメッセージを送信
-      logger.info(`Sending conversation to LLM from user ${message.author.tag}: ${message.content.substring(0, 100)}...`);
-      const response = await geminiClient.generateContent(
-        message.content,
-        systemPrompt,
-        undefined,
-        60000, // 60秒タイムアウト
-        history
-      );
-      
       // 会話履歴にユーザーのメッセージを追加
       conversationManager.addMessage(
         message.author.id,
@@ -226,6 +218,71 @@ export class DiscordBot {
         message.guild ? message.guild.id : 'dm',
         message.content,
         false // ユーザーメッセージ
+      );
+      
+      logger.info(`Sending conversation to LLM from user ${message.author.tag}: ${message.content.substring(0, 100)}...`);
+      
+      let responseBuffer = '';
+      let lastUpdateTime = Date.now();
+      const updateInterval = 1000; // 1秒ごとに更新
+      
+      const streamCallback = async (chunk: string, isComplete: boolean) => {
+        responseBuffer += chunk;
+        
+        const currentTime = Date.now();
+        if (isComplete || currentTime - lastUpdateTime >= updateInterval) {
+          lastUpdateTime = currentTime;
+          
+          // 応答が長すぎる場合は分割して送信
+          const maxMessageLength = 2000; // Discordの最大メッセージ長
+          
+          if (responseBuffer.length <= maxMessageLength) {
+            await responseMsg.edit(responseBuffer);
+          } else {
+            const chunks = [];
+            let remainingText = responseBuffer;
+            
+            while (remainingText.length > maxMessageLength) {
+              // 最大長までのチャンクを取得
+              const chunkSize = maxMessageLength;
+              let chunk = remainingText.substring(0, chunkSize);
+              
+              // コードブロックやマークダウンを分割しないようにする
+              if (!chunk.endsWith('\n')) {
+                const lastNewline = chunk.lastIndexOf('\n');
+                if (lastNewline > chunkSize * 0.8) { // 最大長の80%以降に改行があればそこで分割
+                  chunk = chunk.substring(0, lastNewline + 1);
+                }
+              }
+              
+              chunks.push(chunk);
+              remainingText = remainingText.substring(chunk.length);
+            }
+            
+            chunks.push(remainingText);
+            
+            await responseMsg.edit(chunks[0]);
+            
+            for (let i = 1; i < chunks.length - 1; i++) {
+              await message.reply(chunks[i]);
+            }
+            
+            if (chunks.length > 1) {
+              const lastMsg = await message.reply(chunks[chunks.length - 1]);
+              responseMsg = lastMsg;
+              responseBuffer = chunks[chunks.length - 1];
+            }
+          }
+        }
+      };
+      
+      const response = await geminiClient.generateContentStream(
+        message.content,
+        streamCallback,
+        systemPrompt,
+        0.7, // temperature
+        60000, // 60秒タイムアウト
+        history
       );
       
       // 会話履歴にAIのメッセージを追加
@@ -236,34 +293,6 @@ export class DiscordBot {
         response,
         true // AIのメッセージ
       );
-      
-      // 応答が長すぎる場合は分割して送信
-      const maxMessageLength = 2000; // Discordの最大メッセージ長
-      
-      if (response.length <= maxMessageLength) {
-        await message.reply(response);
-      } else {
-        // 長いメッセージを分割
-        let remainingText = response;
-        
-        while (remainingText.length > 0) {
-          // 最大長までのチャンクを取得
-          const chunkSize = Math.min(remainingText.length, maxMessageLength);
-          let chunk = remainingText.substring(0, chunkSize);
-          
-          // コードブロックやマークダウンを分割しないようにする
-          if (chunkSize < remainingText.length && !chunk.endsWith('\n')) {
-            const lastNewline = chunk.lastIndexOf('\n');
-            if (lastNewline > chunkSize * 0.8) { // 最大長の80%以降に改行があればそこで分割
-              chunk = chunk.substring(0, lastNewline + 1);
-            }
-          }
-          
-          // 分割した各チャンクは返信として送信
-          await message.reply(chunk);
-          remainingText = remainingText.substring(chunk.length);
-        }
-      }
       
     } catch (error) {
       logger.error(`Error in conversation with LLM: ${(error as Error).message}`);
@@ -447,13 +476,19 @@ file:パス - 特定ファイルに対する指示（例: \`file:src/App.js\`）
    * 進捗更新リスナー
    * @param task プロジェクトタスク
    * @param message 進捗メッセージ
+   * @param isPartial 部分的な更新かどうか（ストリーミング用）
    */
-  private async progressListener(task: ProjectTask, message: string): Promise<void> {
+  private async progressListener(task: ProjectTask, message: string, isPartial: boolean = false): Promise<void> {
     try {
       // 保存されている進捗メッセージを取得
       const progressMsg = this.progressMessages.get(task.id);
       if (!progressMsg) {
         logger.warn(`No progress message found for task ${task.id}`);
+        return;
+      }
+      
+      if (isPartial) {
+        await progressMsg.edit(message);
         return;
       }
       

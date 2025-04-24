@@ -128,7 +128,7 @@ export interface ProjectTask {
 /**
  * 進捗イベントリスナー関数の型
  */
-export type ProgressListener = (task: ProjectTask, message: string) => Promise<void>;
+export type ProgressListener = (task: ProjectTask, message: string, isPartial?: boolean) => Promise<void>;
 
 /**
  * プロンプト種別に応じたテンプレート変数
