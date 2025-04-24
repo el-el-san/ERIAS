@@ -29,7 +29,7 @@ const config = {
     // Google Gemini API
     google: {
       apiKey: process.env.GOOGLE_API_KEY || '',
-      defaultModel: process.env.DEFAULT_MODEL || 'gemini-1.5-pro-latest',
+      defaultModel: process.env.DEFAULT_MODEL || 'gemini-2.5-flash-preview-04-17',
     },
     // OpenAI API (オプション)
     openai: {
