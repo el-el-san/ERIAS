@@ -1,7 +1,7 @@
 import { Message } from 'discord.js';
-import { FeedbackPriority, FeedbackType, FeedbackUrgency } from '../agent/types';
-import { AgentCore } from '../agent/agentCore';
-import logger from '../utils/logger';
+import { FeedbackPriority, FeedbackType, FeedbackUrgency } from '../agent/types.js';
+import { AgentCore } from '../agent/agentCore.js';
+import logger from '../utils/logger.js';
 
 /**
  * ユーザーからのフィードバックメッセージを処理するクラス

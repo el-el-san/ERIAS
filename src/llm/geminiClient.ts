@@ -1,8 +1,8 @@
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, Content } from '@google/generative-ai';
-import logger from '../utils/logger';
-import config from '../config/config';
-import { withRetry } from '../utils/asyncUtils';
-import { ConversationMessage } from './conversationManager';
+import logger from '../utils/logger.js';
+import config from '../config/config.js';
+import { withRetry } from '../utils/asyncUtils.js';
+import { ConversationMessage } from './conversationManager.js';
 
 /**
  * Google Gemini APIクライアント

@@ -1,13 +1,13 @@
 import path from 'path';
 import fs from 'fs/promises';
 import { v4 as uuidv4 } from 'uuid';
-import { ProjectTask, ProjectStatus } from './types';
-import { GitHubService } from '../services/githubService';
-import { Coder } from './coder';
-import { Tester } from './tester';
-import logger from '../utils/logger';
-import { getProjectPath } from '../tools/fileSystem';
-import { executeCommand } from '../tools/commandExecutor';
+import { ProjectTask, ProjectStatus } from './types.js';
+import { GitHubService } from '../services/githubService.js';
+import { Coder } from './coder.js';
+import { Tester } from './tester.js';
+import logger from '../utils/logger.js';
+import { getProjectPath } from '../tools/fileSystem.js';
+import { executeCommand } from '../tools/commandExecutor.js';
 
 /**
  * GitHubリポジトリタスク実行クラス
@@ -59,6 +59,9 @@ export class GitHubTaskExecutor {
       const defaultBranch = await this.githubService.getDefaultBranch(owner, repo);
       
       const timestamp = Math.floor(Date.now() / 1000);
+      
+            // デフォルトブランチをリモートの最新に同期
+            await this.githubService.syncBranch(task.projectPath, defaultBranch);
       const branchName = `erias/${timestamp}-task`;
       task.repoBranch = branchName;
       

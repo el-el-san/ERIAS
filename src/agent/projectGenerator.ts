@@ -4,16 +4,16 @@ import {
   ProjectStatus,
   FileInfo,
   DevelopmentPlan
-} from './types';
-import { Planner } from './planner';
-import { Coder } from './coder';
-import { Tester } from './tester';
-import { Debugger } from './debugger';
-import { FeedbackHandler } from './feedbackHandler';
-import logger from '../utils/logger';
+} from './types.js';
+import { Planner } from './planner.js';
+import { Coder } from './coder.js';
+import { Tester } from './tester.js';
+import { Debugger } from './debugger.js';
+import { FeedbackHandler } from './feedbackHandler.js';
+import logger from '../utils/logger.js';
 import archiver from 'archiver';
 import { createWriteStream } from 'fs';
-import config from '../config/config';
+import config from '../config/config.js';
 
 /**
  * プロジェクト生成クラス

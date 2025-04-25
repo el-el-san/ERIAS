@@ -1,4 +1,4 @@
-import { ProjectTask, Tester } from '../agent/types';
+import { ProjectTask, Tester } from '../agent/types.js';
 
 /**
  * テスタークラス

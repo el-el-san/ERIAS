@@ -9,18 +9,18 @@ import {
   FeedbackUrgency,
   FeedbackType,
   UserFeedback
-} from './types';
-import { Planner } from './planner';
-import { Coder } from './coder';
-import { Tester } from './tester';
-import { Debugger } from './debugger';
-import logger from '../utils/logger';
-import config from '../config/config';
-import { getProjectPath } from '../tools/fileSystem';
-import { withTimeout } from '../utils/asyncUtils';
-import { FeedbackHandler } from './feedbackHandler';
-import { ProjectGenerator } from './projectGenerator';
-import { GitHubTaskExecutor } from './githubTaskExecutor';
+} from './types.js';
+import { Planner } from './planner.js';
+import { Coder } from './coder.js';
+import { Tester } from './tester.js';
+import { Debugger } from './debugger.js';
+import logger from '../utils/logger.js';
+import config from '../config/config.js';
+import { getProjectPath } from '../tools/fileSystem.js';
+import { withTimeout } from '../utils/asyncUtils.js';
+import { FeedbackHandler } from './feedbackHandler.js';
+import { ProjectGenerator } from './projectGenerator.js';
+import { GitHubTaskExecutor } from './githubTaskExecutor.js';
 
 /**
  * エージェントコア

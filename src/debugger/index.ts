@@ -1,5 +1,5 @@
-import { ProjectTask, ErrorInfo, Debugger } from '../agent/types';
-import logger from '../utils/logger';
+import { ProjectTask, ErrorInfo, Debugger } from '../agent/types.js';
+import logger from '../utils/logger.js';
 
 /**
  * デバッガークラス

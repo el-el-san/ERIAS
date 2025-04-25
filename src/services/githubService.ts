@@ -1,10 +1,10 @@
 import { Octokit } from '@octokit/rest';
-import simpleGit, { SimpleGit } from 'simple-git';
+import { simpleGit, SimpleGit } from 'simple-git';
 import path from 'path';
 import fs from 'fs/promises';
-import logger from '../utils/logger';
-import { executeCommand } from '../tools/commandExecutor';
-import config from '../config/config';
+import logger from '../utils/logger.js';
+import { executeCommand } from '../tools/commandExecutor.js';
+import config from '../config/config.js';
 
 /**
  * GitHubサービスクラス
@@ -226,5 +226,29 @@ export class GitHubService {
     コードはコードブロックで囲んでください。
     テスト手順も提供してください。
     `;
+  }
+  /**
+   * 指定したローカルブランチをリモートの最新の状態に同期
+   * @param repoPath リポジトリのパス
+   * @param branchName ブランチ名
+   */
+  public async syncBranch(repoPath: string, branchName: string): Promise<boolean> {
+    logger.info(`ブランチを同期中: ${branchName}`);
+
+    try {
+      const git: SimpleGit = simpleGit(repoPath);
+
+      // 指定ブランチに切り替え
+      await git.checkout(branchName);
+
+      // リモートからプルして最新の状態を取得
+      await git.pull('origin', branchName);
+
+      logger.info(`ブランチの同期に成功: ${branchName}`);
+      return true;
+    } catch (error) {
+      logger.error(`ブランチの同期に失敗: ${(error as Error).message}`);
+      return false;
+    }
   }
 }
