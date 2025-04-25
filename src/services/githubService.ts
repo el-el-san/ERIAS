@@ -118,7 +118,7 @@ export class GitHubService {
     try {
       const git: SimpleGit = simpleGit(repoPath);
       
-      await git.add(['--force', `projects/${task.id}`]);
+      await git.add(['--force', '.']);
       
       const commitResult = await git.commit(message);
       
