@@ -1,14 +1,14 @@
 import { Client, Events, GatewayIntentBits, Message, TextChannel, AttachmentBuilder, REST, Routes } from 'discord.js';
-import { AgentCore } from '../agent/agentCore';
-import { ProjectTask, ProgressListener } from '../agent/types';
-import logger from '../utils/logger';
-import config from '../config/config';
+import { AgentCore } from '../agent/agentCore.js';
+import { ProjectTask, ProgressListener } from '../agent/types.js';
+import logger from '../utils/logger.js';
+import config from '../config/config.js';
 import path from 'path';
 import fs from 'fs';
-import { GeminiClient } from '../llm/geminiClient';
-import { FeedbackMessageHandler } from './feedbackMessageHandler';
-import { conversationManager } from '../llm/conversationManager';
-import { CommandHandler } from './commandHandler';
+import { GeminiClient } from '../llm/geminiClient.js';
+import { FeedbackMessageHandler } from './feedbackMessageHandler.js';
+import { conversationManager } from '../llm/conversationManager.js';
+import { CommandHandler } from './commandHandler.js';
 
 /**
  * Discordボットインターフェイス

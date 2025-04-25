@@ -1,11 +1,11 @@
 import { exec, ExecOptions } from 'child_process';
 import { promisify } from 'util';
-import logger from '../utils/logger';
+import logger from '../utils/logger.js';
 
 // CommandResult型の定義とエクスポート
 export type CommandResult = { success: boolean; output: string; } | { stdout: string; stderr: string; };
 // ExecOptionsもエクスポート
-export { ExecOptions };
+export type { ExecOptions };
 
 // execを非同期で呼び出せるようにPromisify
 const execAsync = promisify(exec);

@@ -1,5 +1,5 @@
-import { ProjectTask, FileInfo, Coder, UserFeedback } from '../agent/types';
-import { regenerateFile, adjustFileWithFeedback, addFeatureFromFeedback } from './regenerateFileStub';
+import { ProjectTask, FileInfo, Coder, UserFeedback } from '../agent/types.js';
+import { regenerateFile, adjustFileWithFeedback, addFeatureFromFeedback } from './regenerateFileStub.js';
 
 /**
  * コーダークラス

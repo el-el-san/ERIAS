@@ -1,8 +1,8 @@
 import { User } from 'discord.js';
 import fs from 'fs';
 import path from 'path';
-import logger from '../utils/logger';
-import config from '../config/config';
+import logger from '../utils/logger.js';
+import config from '../config/config.js';
 
 /**
  * 会話メッセージの型定義

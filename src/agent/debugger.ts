@@ -1,13 +1,13 @@
 import path from 'path';
 import fs from 'fs/promises';
-import { ProjectTask, ErrorInfo, Debugger as DebuggerInterface } from './types';
-import { GeminiClient } from '../llm/geminiClient';
-import { PromptBuilder, PromptType } from '../llm/promptBuilder';
-import logger from '../utils/logger';
-import { toolRegistry, ToolDefinition } from '../llm/toolRegistry';
-import { fileSystemTools, getProjectPath } from '../tools/fileSystem';
-import { commandTools } from '../tools/commandExecutor';
-import { withRetry } from '../utils/asyncUtils';
+import { ProjectTask, ErrorInfo, Debugger as DebuggerInterface } from './types.js';
+import { GeminiClient } from '../llm/geminiClient.js';
+import { PromptBuilder, PromptType } from '../llm/promptBuilder.js';
+import logger from '../utils/logger.js';
+import { toolRegistry, ToolDefinition } from '../llm/toolRegistry.js';
+import { fileSystemTools, getProjectPath } from '../tools/fileSystem.js';
+import { commandTools } from '../tools/commandExecutor.js';
+import { withRetry } from '../utils/asyncUtils.js';
 
 /**
  * デバッグモジュール

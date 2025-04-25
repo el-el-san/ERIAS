@@ -1,5 +1,5 @@
 // adjustPlanStub.ts - Plannerのモック実装（テスト用）
-import { ProjectTask, DevelopmentPlan } from '../agent/types';
+import { ProjectTask, DevelopmentPlan } from '../agent/types.js';
 
 /**
  * フィードバックに基づいて計画を調整するモック関数

@@ -3,12 +3,12 @@ import {
   UserFeedback,
   ProjectStatus,
   FileInfo
-} from './types';
-import { Planner } from './planner';
-import { Coder } from './coder';
+} from './types.js';
+import { Planner } from './planner.js';
+import { Coder } from './coder.js';
 import path from 'path';
 import fs from 'fs/promises';
-import logger from '../utils/logger';
+import logger from '../utils/logger.js';
 
 /**
  * フィードバック処理クラス

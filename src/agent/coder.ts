@@ -1,13 +1,13 @@
 import path from 'path';
 import fs from 'fs/promises';
-import { FileInfo, ProjectTask, Coder as CoderInterface, UserFeedback, DevelopmentPlan } from './types'; // DevelopmentPlan をインポート
-import { GeminiClient } from '../llm/geminiClient';
-import { PromptBuilder, PromptType } from '../llm/promptBuilder';
-import logger from '../utils/logger';
-import { toolRegistry, ToolDefinition } from '../llm/toolRegistry';
-import { fileSystemTools, getProjectPath, listDirectory } from '../tools/fileSystem'; // listDirectory をインポート
-import { commandTools } from '../tools/commandExecutor';
-import { withRetry } from '../utils/asyncUtils';
+import { FileInfo, ProjectTask, Coder as CoderInterface, UserFeedback, DevelopmentPlan } from './types.js'; // DevelopmentPlan をインポート
+import { GeminiClient } from '../llm/geminiClient.js';
+import { PromptBuilder, PromptType } from '../llm/promptBuilder.js';
+import logger from '../utils/logger.js';
+import { toolRegistry, ToolDefinition } from '../llm/toolRegistry.js';
+import { fileSystemTools, getProjectPath, listDirectory } from '../tools/fileSystem.js'; // listDirectory をインポート
+import { commandTools } from '../tools/commandExecutor.js';
+import { withRetry } from '../utils/asyncUtils.js';
 
 /**
  * コード生成モジュール

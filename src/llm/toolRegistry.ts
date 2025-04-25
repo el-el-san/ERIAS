@@ -1,4 +1,4 @@
-import logger from '../utils/logger';
+import logger from '../utils/logger.js';
 
 /**
  * Function Callingで使用するツール定義のインターフェース
