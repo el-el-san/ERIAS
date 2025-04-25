@@ -123,6 +123,13 @@ export interface ProjectTask {
   additionalInstructions?: string;       // 追加指示（LLMプロンプトに使用）
   requiresRecoding?: boolean;            // 再コーディングが必要
   currentContextualFeedback?: string[];  // 現在のコンテキストに関するフィードバック
+  isGitHubRepo?: boolean;                // GitHubリポジトリタスクかどうか
+  repoUrl?: string;                      // GitHubリポジトリURL
+  repoOwner?: string;                    // GitHubリポジトリオーナー
+  repoName?: string;                     // GitHubリポジトリ名
+  repoBranch?: string;                   // GitHubリポジトリブランチ
+  repoTask?: string;                     // GitHubタスク内容
+  pullRequestUrl?: string;               // 作成したプルリクエストのURL
 }
 
 /**
