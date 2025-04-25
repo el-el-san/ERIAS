@@ -35,6 +35,24 @@ export class CommandHandler {
         ]
       },
       {
+        name: 'githubrepo',
+        description: 'GitHubリポジトリに対してタスクを実行します',
+        options: [
+          {
+            name: 'repo_url',
+            description: 'GitHubリポジトリのURL',
+            type: 3, // STRING
+            required: true,
+          },
+          {
+            name: 'task',
+            description: '実行するタスクの説明',
+            type: 3, // STRING
+            required: true,
+          }
+        ]
+      },
+      {
         name: 'status',
         description: 'プロジェクト生成の状態を確認します',
         options: [
@@ -76,6 +94,10 @@ export class CommandHandler {
       switch (commandName) {
         case 'newproject':
           await this.handleNewProjectSlashCommand(interaction);
+          break;
+          
+        case 'githubrepo':
+          await this.handleGitHubRepoSlashCommand(interaction);
           break;
           
         case 'status':
@@ -224,17 +246,71 @@ export class CommandHandler {
    * helpスラッシュコマンド処理
    * @param interaction コマンドインタラクション
    */
+  /**
+   * githubrepoスラッシュコマンド処理
+   * @param interaction コマンドインタラクション
+   */
+  private async handleGitHubRepoSlashCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+    // ディファードレスポンスを送信（処理に時間がかかることを通知）
+    await interaction.deferReply();
+    
+    const repoUrl = interaction.options.getString('repo_url');
+    const task = interaction.options.getString('task');
+    
+    if (!repoUrl) {
+      await interaction.followUp('GitHubリポジトリのURLを指定してください。');
+      return;
+    }
+    
+    if (!task) {
+      await interaction.followUp('実行するタスクを指定してください。');
+      return;
+    }
+    
+    const githubTask = this.agentCore.createGitHubTask(
+      interaction.user.id,
+      interaction.guild!.id,
+      interaction.channel!.id,
+      repoUrl,
+      task
+    );
+    
+    // タスクIDを通知
+    await interaction.followUp(
+      `GitHubリポジトリタスクを開始しました。\nタスクID: \`${githubTask.id}\`\n\n**リポジトリ**: ${repoUrl}\n**タスク**: ${task}\n\n_状態: 準備中_`
+    );
+    
+    try {
+      this.agentCore.executeGitHubTask(githubTask).then(async (prUrl) => {
+        await interaction.followUp(`<@${interaction.user.id}> GitHubタスクが完了しました。\nプルリクエスト: ${prUrl}`);
+      }).catch(async (error) => {
+        logger.error(`GitHub task execution failed: ${error.message}`);
+        // エラーメッセージを送信
+        try {
+          await interaction.followUp(`<@${interaction.user.id}> GitHubタスクの実行に失敗しました。エラー: ${error.message}`);
+        } catch (followUpError) {
+          logger.error(`Failed to send error followup: ${(followUpError as Error).message}`);
+        }
+      });
+    } catch (error) {
+      logger.error(`Failed to start GitHub task: ${(error as Error).message}`);
+      await interaction.followUp(`GitHubタスクの開始に失敗しました。エラー: ${(error as Error).message}`);
+    }
+  }
+
   private async handleHelpSlashCommand(interaction: ChatInputCommandInteraction): Promise<void> {
     const helpText = `
 **Discord AI エージェント - コマンド一覧**
 
 \`/newproject [仕様]\` - 新しいプロジェクトを生成
+\`/githubrepo [repo_url] [task]\` - GitHubリポジトリに対してタスクを実行
 \`/status [タスクID]\` - プロジェクト生成の状態を確認
 \`/cancel [タスクID]\` - 実行中のプロジェクト生成をキャンセル
 \`/help\` - このヘルプを表示
 
 **使用例**
 \`/newproject Reactを使用したシンプルなTODOアプリを作成してください。LocalStorageでデータを保存し、タスクの追加、編集、削除、完了のマーキングができるようにしてください。\`
+\`/githubrepo https://github.com/username/repo ログイン機能にGoogle認証を追加してください。\`
 `;
     
     await interaction.reply(helpText);

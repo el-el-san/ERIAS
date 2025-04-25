@@ -20,6 +20,7 @@ import { getProjectPath } from '../tools/fileSystem';
 import { withTimeout } from '../utils/asyncUtils';
 import { FeedbackHandler } from './feedbackHandler';
 import { ProjectGenerator } from './projectGenerator';
+import { GitHubTaskExecutor } from './githubTaskExecutor';
 
 /**
  * エージェントコア
@@ -32,6 +33,7 @@ export class AgentCore {
   private debugger: Debugger;
   private feedbackHandler: FeedbackHandler;
   private projectGenerator: ProjectGenerator;
+  private githubTaskExecutor: GitHubTaskExecutor;
   private progressListeners: ProgressListener[] = [];
   private activeTasks: Map<string, ProjectTask> = new Map();
   private pendingFeedbackRequests: Map<string, { resolve: (feedback: string | null) => void, timeoutHandler: NodeJS.Timeout }> = new Map();
@@ -56,6 +58,7 @@ export class AgentCore {
       this.debugger,
       this.feedbackHandler
     );
+    this.githubTaskExecutor = new GitHubTaskExecutor(this.coder, this.tester);
   }
   
   /**
@@ -138,6 +141,53 @@ export class AgentCore {
   }
   
   /**
+   * GitHubリポジトリタスクを作成
+   * @param userId ユーザーID
+   * @param guildId サーバーID
+   * @param channelId チャンネルID
+   * @param repoUrl GitHubリポジトリURL
+   * @param taskDescription タスクの説明
+   */
+  public createGitHubTask(
+    userId: string,
+    guildId: string,
+    channelId: string,
+    repoUrl: string,
+    taskDescription: string
+  ): ProjectTask {
+    const taskId = uuidv4();
+    const projectPath = getProjectPath(taskId);
+    
+    const task: ProjectTask = {
+      id: taskId,
+      userId,
+      guildId,
+      channelId,
+      specification: taskDescription,
+      status: ProjectStatus.PENDING,
+      errors: [],
+      startTime: Date.now(),
+      projectPath,
+      lastProgressUpdate: Date.now(),
+      feedbackQueue: {
+        taskId,
+        feedbacks: [],
+        lastProcessedIndex: 0
+      },
+      hasCriticalFeedback: false,
+      currentContextualFeedback: [],
+      isGitHubRepo: true,
+      repoUrl,
+      repoTask: taskDescription
+    };
+    
+    this.activeTasks.set(taskId, task);
+    logger.info(`Created new GitHub task: ${taskId} for repo: ${repoUrl}`);
+    
+    return task;
+  }
+  
+  /**
    * タスクIDからタスクを取得
    * @param taskId タスクID
    */
@@ -156,12 +206,17 @@ export class AgentCore {
       // プロジェクトディレクトリを作成
       await fs.mkdir(task.projectPath, { recursive: true });
       
-      // 全体プロセスのタイムアウトを設定
-      return await withTimeout(
-        this.projectGenerator.executeProjectGeneration(task, this.notifyProgress.bind(this)),
-        config.agent.maxExecutionTime,
-        `Project generation timed out after ${config.agent.maxExecutionTime}ms`
-      );
+      if (task.isGitHubRepo && task.repoUrl && task.repoTask) {
+        await this.executeGitHubTask(task);
+        return '';
+      } else {
+        // 全体プロセスのタイムアウトを設定
+        return await withTimeout(
+          this.projectGenerator.executeProjectGeneration(task, this.notifyProgress.bind(this)),
+          config.agent.maxExecutionTime,
+          `Project generation timed out after ${config.agent.maxExecutionTime}ms`
+        );
+      }
     } catch (error) {
       // エラー発生時の処理
       task.status = ProjectStatus.FAILED;
@@ -182,6 +237,34 @@ export class AgentCore {
           logger.debug(`Removed completed task from memory: ${task.id}`);
         }
       }, 60000); // 1分後にクリーンアップ
+    }
+  }
+  
+  /**
+   * GitHubリポジトリタスクを実行
+   * @param task プロジェクトタスク
+   * @returns プルリクエストのURL
+   */
+  public async executeGitHubTask(task: ProjectTask): Promise<string> {
+    try {
+      await this.githubTaskExecutor.executeGitHubTask(task, this.notifyProgress.bind(this));
+      
+      if (task.pullRequestUrl) {
+        return task.pullRequestUrl;
+      } else {
+        throw new Error('プルリクエストの作成に失敗しました');
+      }
+    } catch (error) {
+      // エラー発生時の処理
+      task.status = ProjectStatus.FAILED;
+      task.endTime = Date.now();
+      
+      const errorMsg = `GitHubタスクの実行に失敗しました: ${(error as Error).message}`;
+      logger.error(errorMsg);
+      
+      await this.notifyProgress(task, errorMsg);
+      
+      throw error;
     }
   }
   
