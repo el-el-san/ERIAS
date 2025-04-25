@@ -1,5 +1,5 @@
-import { ProjectTask, DevelopmentPlan, Planner } from '../agent/types';
-import { adjustPlan, refactorPlan } from './adjustPlanStub';
+import { ProjectTask, DevelopmentPlan, Planner } from '../agent/types.js';
+import { adjustPlan, refactorPlan } from './adjustPlanStub.js';
 
 /**
  * プランナークラス

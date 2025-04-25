@@ -2,6 +2,7 @@
   "name": "discord-ai-agent",
   "version": "0.1.0",
   "description": "Discord連携 自律型AI開発エージェント - Discordからの指示に基づき自律的にプロジェクト生成を行う",
+  "type": "module",
   "main": "dist/index.js",
   "bin": {
     "d-ai-agent": "./dist/index.js"
@@ -36,6 +37,7 @@
     "winston": "^3.11.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
     "@types/archiver": "^6.0.3",
     "@types/jest": "^29.5.10",
     "@types/node": "^20.10.0",

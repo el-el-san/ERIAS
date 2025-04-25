@@ -1,12 +1,12 @@
 import path from 'path';
 import fs from 'fs/promises'; // fs/promises を使う
-import { DevelopmentPlan, ProjectTask, Planner as PlannerInterface, FileInfo } from './types'; // FileInfo をインポート
-import { GeminiClient } from '../llm/geminiClient';
-import { PromptBuilder, PromptType } from '../llm/promptBuilder';
-import logger from '../utils/logger';
-import { toolRegistry, ToolDefinition } from '../llm/toolRegistry';
-import { fileSystemTools, getProjectPath } from '../tools/fileSystem'; // getProjectPath をインポート
-import { safeJsonParse } from '../utils/jsonUtils'; // 追加
+import { DevelopmentPlan, ProjectTask, Planner as PlannerInterface, FileInfo } from './types.js'; // FileInfo をインポート
+import { GeminiClient } from '../llm/geminiClient.js';
+import { PromptBuilder, PromptType } from '../llm/promptBuilder.js';
+import logger from '../utils/logger.js';
+import { toolRegistry, ToolDefinition } from '../llm/toolRegistry.js';
+import { fileSystemTools, getProjectPath } from '../tools/fileSystem.js'; // getProjectPath をインポート
+import { safeJsonParse } from '../utils/jsonUtils.js'; // 追加
 
 /**
  * 計画立案（プランニング）モジュール

@@ -1,5 +1,5 @@
 // regenerateFileStub.ts - Coderのモック実装（テスト用）
-import { ProjectTask, FileInfo, UserFeedback } from '../agent/types';
+import { ProjectTask, FileInfo, UserFeedback } from '../agent/types.js';
 
 /**
  * フィードバックに基づいてファイルを再生成するモック関数

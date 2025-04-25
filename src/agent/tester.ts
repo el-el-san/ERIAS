@@ -1,10 +1,10 @@
 import path from 'path';
-import { ProjectTask, Tester as TesterInterface } from './types';
+import { ProjectTask, Tester as TesterInterface } from './types.js';
 // 修正: CommandResultとExecOptionsのimport問題を解決
-import { commandTools, CommandResult, ExecOptions } from '../tools/commandExecutor';
-import { getProjectPath } from '../tools/fileSystem';
-import logger from '../utils/logger';
-import { toolRegistry, ToolDefinition } from '../llm/toolRegistry';
+import { commandTools, CommandResult, ExecOptions } from '../tools/commandExecutor.js';
+import { getProjectPath } from '../tools/fileSystem.js';
+import logger from '../utils/logger.js';
+import { toolRegistry, ToolDefinition } from '../llm/toolRegistry.js';
 
 /**
  * テスト実行モジュール

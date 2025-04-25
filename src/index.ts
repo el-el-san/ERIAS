@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 
-import { AgentCore } from './agent/agentCore';
-import { DiscordBot } from './bot/discordBot';
-import { Planner } from './agent/planner';
-import { Coder } from './agent/coder';
-import { Tester } from './agent/tester';
-import { Debugger } from './agent/debugger';
-import { GeminiClient } from './llm/geminiClient';
-import { PromptBuilder } from './llm/promptBuilder';
-import logger from './utils/logger';
-import config from './config/config';
+import { AgentCore } from './agent/agentCore.js';
+import { DiscordBot } from './bot/discordBot.js';
+import { Planner } from './agent/planner.js';
+import { Coder } from './agent/coder.js';
+import { Tester } from './agent/tester.js';
+import { Debugger } from './agent/debugger.js';
+import { GeminiClient } from './llm/geminiClient.js';
+import { PromptBuilder } from './llm/promptBuilder.js';
+import logger from './utils/logger.js';
+import config from './config/config.js';
 
 /**
  * メインアプリケーション

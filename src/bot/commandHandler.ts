@@ -1,6 +1,6 @@
 import { Message, ApplicationCommandData, CommandInteraction, ChatInputCommandInteraction } from 'discord.js';
-import { AgentCore } from '../agent/agentCore';
-import logger from '../utils/logger';
+import { AgentCore } from '../agent/agentCore.js';
+import logger from '../utils/logger.js';
 
 /**
  * Discordコマンドハンドラ

@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
-import config from '../config/config';
-import logger from '../utils/logger';
+import config from '../config/config.js';
+import logger from '../utils/logger.js';
 
 /**
  * プロジェクトパスを取得
