@@ -6,6 +6,7 @@ import { PromptBuilder, PromptType } from '../llm/promptBuilder';
 import logger from '../utils/logger';
 import { toolRegistry, ToolDefinition } from '../llm/toolRegistry';
 import { fileSystemTools, getProjectPath } from '../tools/fileSystem'; // getProjectPath をインポート
+import { safeJsonParse } from '../utils/jsonUtils'; // 追加
 
 /**
  * 計画立案（プランニング）モジュール
@@ -59,13 +60,13 @@ export class Planner implements PlannerInterface {
           // JSON形式でない場合、JSONブロックを抽出
           const jsonMatch = planResponse.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
           if (jsonMatch && jsonMatch[1]) {
-            plan = JSON.parse(jsonMatch[1]) as DevelopmentPlan; // plan 変数に代入
+            plan = safeJsonParse<DevelopmentPlan>(jsonMatch[1]); // JSON.parse を safeJsonParse に変更
           } else { // else を追加してエラー処理を明確化
             throw new Error('Failed to extract valid JSON from the response');
           }
         } else { // else を追加
           // 直接JSONをパース
-          plan = JSON.parse(planResponse) as DevelopmentPlan; // plan 変数に代入
+          plan = safeJsonParse<DevelopmentPlan>(planResponse); // JSON.parse を safeJsonParse に変更
         }
 
        // ここで plan が確定しているはず
@@ -248,13 +249,13 @@ export class Planner implements PlannerInterface {
         // JSONブロックを抽出
         const jsonMatch = adjustmentResponse.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
         if (jsonMatch && jsonMatch[1]) {
-          const adjustedPlan = JSON.parse(jsonMatch[1]) as DevelopmentPlan;
+          const adjustedPlan = safeJsonParse<DevelopmentPlan>(jsonMatch[1]); // JSON.parse を safeJsonParse に変更
           return this.validateAndNormalizePlan(adjustedPlan);
         }
 
         // 直接JSONをパース
         if (adjustmentResponse.trim().startsWith('{')) {
-          const adjustedPlan = JSON.parse(adjustmentResponse) as DevelopmentPlan;
+          const adjustedPlan = safeJsonParse<DevelopmentPlan>(adjustmentResponse); // JSON.parse を safeJsonParse に変更
           return this.validateAndNormalizePlan(adjustedPlan);
         }
 
@@ -306,13 +307,13 @@ export class Planner implements PlannerInterface {
         // JSONブロックを抽出
         const jsonMatch = refactoringResponse.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
         if (jsonMatch && jsonMatch[1]) {
-          const refactoredPlan = JSON.parse(jsonMatch[1]) as DevelopmentPlan;
+          const refactoredPlan = safeJsonParse<DevelopmentPlan>(jsonMatch[1]); // JSON.parse を safeJsonParse に変更
           return this.validateAndNormalizePlan(refactoredPlan);
         }
 
         // 直接JSONをパース
         if (refactoringResponse.trim().startsWith('{')) {
-          const refactoredPlan = JSON.parse(refactoringResponse) as DevelopmentPlan;
+          const refactoredPlan = safeJsonParse<DevelopmentPlan>(refactoringResponse); // JSON.parse を safeJsonParse に変更
           return this.validateAndNormalizePlan(refactoredPlan);
         }
 
