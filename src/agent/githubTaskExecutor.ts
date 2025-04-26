@@ -6,7 +6,7 @@ import { GitHubService } from '../services/githubService.js';
 import { Coder } from './coder.js';
 import { Tester } from './tester.js';
 import logger from '../utils/logger.js';
-import { getProjectPath } from '../tools/fileSystem.js';
+import { getProjectPath, normalizeAbsolutePath } from '../tools/fileSystem.js';
 import { executeCommand } from '../tools/commandExecutor.js';
 
 /**
@@ -49,7 +49,9 @@ export class GitHubTaskExecutor {
       task.repoName = repo;
       
       await notifyProgressFn(task, `🔄 リポジトリをクローン中: ${task.repoUrl}`);
-      const cloneResult = await this.githubService.cloneRepository(task.repoUrl, task.projectPath);
+      // システム上の実際のクローン先を指定
+      const clonePath = normalizeAbsolutePath(task.projectPath);
+      const cloneResult = await this.githubService.cloneRepository(task.repoUrl, clonePath);
       
       if (!cloneResult) {
         await notifyProgressFn(task, '❌ リポジトリのクローンに失敗しました');
@@ -61,12 +63,12 @@ export class GitHubTaskExecutor {
       const timestamp = Math.floor(Date.now() / 1000);
       
             // デフォルトブランチをリモートの最新に同期
-            await this.githubService.syncBranch(task.projectPath, defaultBranch);
+            await this.githubService.syncBranch(clonePath, defaultBranch);
       const branchName = `erias/${timestamp}-task`;
       task.repoBranch = branchName;
       
       await notifyProgressFn(task, `🔄 新しいブランチを作成中: ${branchName}`);
-      const branchResult = await this.githubService.createBranch(task.projectPath, branchName);
+      const branchResult = await this.githubService.createBranch(clonePath, branchName);
       
       if (!branchResult) {
         await notifyProgressFn(task, '❌ ブランチの作成に失敗しました');
@@ -74,7 +76,7 @@ export class GitHubTaskExecutor {
       }
       
       await notifyProgressFn(task, '🔄 リポジトリの構造を分析中...');
-      const repoFiles = await this.listRepositoryFiles(task.projectPath);
+      const repoFiles = await this.listRepositoryFiles(clonePath);
       
       await notifyProgressFn(task, `🔄 タスクを実行中: ${task.repoTask}`);
       
@@ -106,7 +108,7 @@ export class GitHubTaskExecutor {
       
       await notifyProgressFn(task, '🔄 変更をコミット中...');
       const commitMessage = `feat: ${task.repoTask.substring(0, 50)}${task.repoTask.length > 50 ? '...' : ''}`;
-      const commitResult = await this.githubService.commitChanges(task.projectPath, commitMessage);
+      const commitResult = await this.githubService.commitChanges(clonePath, commitMessage);
       
       if (!commitResult) {
         await notifyProgressFn(task, '❌ 変更のコミットに失敗しました');
@@ -114,7 +116,7 @@ export class GitHubTaskExecutor {
       }
       
       await notifyProgressFn(task, '🔄 変更をプッシュ中...');
-      const pushResult = await this.githubService.pushChanges(task.projectPath, branchName);
+      const pushResult = await this.githubService.pushChanges(clonePath, branchName);
       
       if (!pushResult) {
         await notifyProgressFn(task, '❌ 変更のプッシュに失敗しました');

@@ -4,6 +4,14 @@ import config from '../config/config.js';
 import logger from '../utils/logger.js';
 
 /**
+ * パスを正規化して絶対パスに変換
+ * @param pathToNormalize 正規化するパス
+ */
+export function normalizeAbsolutePath(pathToNormalize: string): string {
+  return path.resolve(pathToNormalize).replace(/\\/g, '/');
+}
+
+/**
  * プロジェクトパスを取得
  * @param taskId タスクID
  */

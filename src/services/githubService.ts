@@ -5,15 +5,15 @@ import fs from 'fs/promises';
 import logger from '../utils/logger.js';
 import { executeCommand } from '../tools/commandExecutor.js';
 import config from '../config/config.js';
+import { normalizeAbsolutePath } from '../tools/fileSystem.js';
 
 /**
  * GitHubサービスクラス
  * GitHubリポジトリの操作を担当
  */
 export class GitHubService {
-  // 直近のリモートURL（push用）
-  lastRepoUrl?: string;
   private octokit: Octokit;
+  private repoMap: Map<string, string> = new Map(); // プロジェクトパス -> リポジトリURLのマッピング
   
   /**
    * GitHubServiceを初期化
@@ -60,13 +60,14 @@ export class GitHubService {
    */
   public async cloneRepository(repoUrl: string, targetPath: string): Promise<boolean> {
     logger.info(`リポジトリをクローン中: ${repoUrl} -> ${targetPath}`);
-    // push用にリモートURLを保存
-    this.lastRepoUrl = repoUrl;
+    
     try {
+      // 既存のディレクトリがあれば削除
       try {
         await fs.access(targetPath);
         await fs.rm(targetPath, { recursive: true, force: true });
       } catch (error) {
+        // ディレクトリが存在しない場合は無視
       }
       
       await fs.mkdir(targetPath, { recursive: true });
@@ -78,7 +79,11 @@ export class GitHubService {
         return false;
       }
       
+      // クローン成功時にマッピングを保存
+      const normalizedPath = normalizeAbsolutePath(targetPath);
+      this.repoMap.set(normalizedPath, repoUrl);
       logger.info(`リポジトリのクローンに成功: ${repoUrl}`);
+      
       return true;
     } catch (error) {
       logger.error(`リポジトリのクローンに失敗: ${(error as Error).message}`);
@@ -143,13 +148,24 @@ export class GitHubService {
     
     try {
       const git: SimpleGit = simpleGit(repoPath);
-
-      // push前にリモートURLを明示的に上書き
-      if (this.lastRepoUrl) {
-        await git.remote(['set-url', 'origin', this.lastRepoUrl]);
-        logger.info(`リモートURLを上書き: ${this.lastRepoUrl}`);
+      const normalizedPath = normalizeAbsolutePath(repoPath);
+      const repoUrl = this.repoMap.get(normalizedPath);
+      
+      if (!repoUrl) {
+        logger.error(`リポジトリURLが見つかりません: ${repoPath}`);
+        return false;
       }
       
+      // リモートURLが正しく設定されているか確認
+      const remotes = await git.getRemotes(true);
+      const originRemote = remotes.find(r => r.name === 'origin');
+      
+      if (!originRemote || originRemote.refs.push !== repoUrl) {
+        logger.info(`リモートURLを設定中: ${repoUrl}`);
+        await git.remote(['set-url', 'origin', repoUrl]);
+      }
+      
+      // プッシュ実行
       await git.push('origin', branchName, ['--set-upstream']);
       
       logger.info(`プッシュに成功: ${branchName}`);

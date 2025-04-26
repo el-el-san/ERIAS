@@ -51,6 +51,8 @@ const config = {
     maxDebugRetries: parseInt(process.env.MAX_DEBUG_RETRIES || '5'),
     // 作業ディレクトリパス
     projectsDir: process.env.PROJECTS_DIR || path.join(process.cwd(), 'projects'),
+    // ERIASのルートディレクトリ
+    eriasRootDir: process.cwd(),
   },
   
   // ログ設定
