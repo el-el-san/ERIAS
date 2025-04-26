@@ -5,9 +5,9 @@ import {
   generateFile,
   regenerateFile,
   adjustFileWithFeedback,
-  addFeatureFromFeedback,
   generateReadme
 } from '../coder/generation.js';
+import { addFeatureFromFeedback } from './coder/addFeatureFromFeedback.js';
 import { installDependencies } from '../coder/dependency.js';
 import {
   setupCodingTools,
@@ -64,11 +64,8 @@ export class Coder implements CoderInterface {
 
   public async addFeatureFromFeedback(task: ProjectTask, feedback: UserFeedback): Promise<boolean> {
     return addFeatureFromFeedback(
-      this.geminiClient,
-      this.promptBuilder,
       task,
-      feedback,
-      setupCodingTools
+      feedback
     );
   }
 

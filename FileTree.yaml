@@ -1,0 +1,180 @@
+
+name: src
+type: directory
+children:
+  - name: agent
+    type: directory
+    children:
+      - name: agentCore.ts
+        type: file
+        lines: 412
+        size: 12837
+      - name: coder.ts
+        type: file
+        lines: 90
+        size: 1961
+      - name: debugger.ts
+        type: file
+        lines: 412
+        size: 13259
+      - name: feedbackHandler.ts
+        type: file
+        lines: 244
+        size: 8231
+      - name: githubTaskExecutor.ts
+        type: file
+        lines: 185
+        size: 6837
+      - name: planner.ts
+        type: file
+        lines: 400
+        size: 11958
+      - name: projectGenerator.ts
+        type: file
+        lines: 341
+        size: 15040
+      - name: tester.ts
+        type: file
+        lines: 258
+        size: 10329
+      - name: types.ts
+        type: file
+        lines: 253
+        size: 12144
+  - name: bot
+    type: directory
+    children:
+      - name: commandHandler.ts
+        type: file
+        lines: 251
+        size: 9507
+      - name: discord
+        type: directory
+        children:
+          - name: events.ts
+            type: file
+            lines: 80
+            size: 3215
+          - name: handlers.ts
+            type: file
+            lines: 161
+            size: 6802
+      - name: discordBot.ts
+        type: file
+        lines: 443
+        size: 16677
+      - name: feedbackMessageHandler.ts
+        type: file
+        lines: 151
+        size: 6514
+  - name: coder
+    type: directory
+    children:
+      - name: dependency.ts
+        type: file
+        lines: 111
+        size: 3729
+      - name: generation.ts
+        type: file
+        lines: 390
+        size: 15540
+      - name: index.ts
+        type: file
+        lines: 149
+        size: 4947
+      - name: regenerateFileStub.ts
+        type: file
+        lines: 62
+        size: 1885
+      - name: utils.ts
+        type: file
+        lines: 124
+        size: 4430
+  - name: config
+    type: directory
+    children:
+      - name: config.ts
+        type: file
+        lines: 84
+        size: 2824
+  - name: debugger
+    type: directory
+    children:
+      - name: index.ts
+        type: file
+        lines: 22
+        size: 608
+  - name: index.ts
+    type: file
+    lines: 58
+    size: 1902
+  - name: llm
+    type: directory
+    children:
+      - name: conversationManager.ts
+        type: file
+        lines: 329
+        size: 11876
+      - name: geminiClient.ts
+        type: file
+        lines: 349
+        size: 13128
+      - name: promptBuilder.ts
+        type: file
+        lines: 178
+        size: 6492
+      - name: toolRegistry.ts
+        type: file
+        lines: 88
+        size: 2291
+  - name: planner
+    type: directory
+    children:
+      - name: adjustPlanStub.ts
+        type: file
+        lines: 66
+        size: 2406
+      - name: index.ts
+        type: file
+        lines: 92
+        size: 2734
+  - name: services
+    type: directory
+    children:
+      - name: githubService.ts
+        type: file
+        lines: 292
+        size: 9491
+  - name: tester
+    type: directory
+    children:
+      - name: index.ts
+        type: file
+        lines: 23
+        size: 635
+  - name: tools
+    type: directory
+    children:
+      - name: commandExecutor.ts
+        type: file
+        lines: 146
+        size: 4384
+      - name: fileSystem.ts
+        type: file
+        lines: 263
+        size: 8650
+  - name: utils
+    type: directory
+    children:
+      - name: asyncUtils.ts
+        type: file
+        lines: 98
+        size: 2447
+      - name: jsonUtils.ts
+        type: file
+        lines: 57
+        size: 1432
+      - name: logger.ts
+        type: file
+        lines: 54
+        size: 1353

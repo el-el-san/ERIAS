@@ -201,10 +201,15 @@ file:パス - 特定ファイルに対する指示（例: \`file:src/App.js\`）
    * newprojectコマンド処理
    * @param message メッセージオブジェクト
    * @param spec プロジェクト仕様
+   * @param repoUrl GitHubリポジトリURL
    */
-  private async handleNewProjectCommand(message: Message, spec: string): Promise<void> {
+  private async handleNewProjectCommand(message: Message, spec: string, repoUrl?: string): Promise<void> {
     if (!spec || spec.trim().length === 0) {
-      await message.reply(`プロジェクトの仕様を指定してください。例: \`${this.commandPrefix}new Reactを使ったTODOアプリ\``);
+      await message.reply(`プロジェクトの仕様を指定してください。例: \`${this.commandPrefix}new Reactを使ったTODOアプリ https://github.com/yourname/yourrepo\``);
+      return;
+    }
+    if (!repoUrl || repoUrl.trim().length === 0) {
+      await message.reply(`GitHubリポジトリURLを指定してください。例: \`${this.commandPrefix}new Reactを使ったTODOアプリ https://github.com/yourname/yourrepo\``);
       return;
     }
     
@@ -212,10 +217,11 @@ file:パス - 特定ファイルに対する指示（例: \`file:src/App.js\`）
     const responseMsg = await message.reply('プロジェクト生成リクエストを受け付けました。処理を開始します...');
     
     // タスクを作成
-    const task = this.agentCore.createTask(
+    const task = this.agentCore.createGitHubTask(
       message.author.id,
       message.guild!.id,
       message.channel.id,
+      repoUrl!,
       spec
     );
     
@@ -223,7 +229,7 @@ file:パス - 特定ファイルに対する指示（例: \`file:src/App.js\`）
     this.progressMessages.set(task.id, responseMsg);
     
     // タスクIDを通知
-    await responseMsg.edit(`プロジェクト生成を開始しました。\nタスクID: \`${task.id}\`\n\n**仕様**:\n${spec}\n\n_状態: 準備中_`);
+    await responseMsg.edit(`プロジェクト生成を開始しました。\nタスクID: \`${task.id}\`\n\n**仕様**:\n${spec}\n**リポジトリ**:\n${repoUrl}\n\n_状態: 準備中_`);
     
     try {
       // 非同期でプロジェクト生成を実行
@@ -318,10 +324,17 @@ file:パス - 特定ファイルに対する指示（例: \`file:src/App.js\`）
   private async progressListener(task: ProjectTask, message: string, isPartial: boolean = false): Promise<void> {
     try {
       // 保存されている進捗メッセージを取得
-      const progressMsg = this.progressMessages.get(task.id);
+      let progressMsg = this.progressMessages.get(task.id);
       if (!progressMsg) {
-        logger.warn(`No progress message found for task ${task.id}`);
-        return;
+        // 進捗メッセージが見つからない場合は新規作成してMapに保存
+        const channel = await this.client.channels.fetch(task.channelId);
+        if (channel && 'send' in channel && typeof channel.send === 'function') {
+          progressMsg = await channel.send(`タスク進捗: ${message}`);
+          this.progressMessages.set(task.id, progressMsg);
+        } else {
+          logger.warn(`No progress message found for task ${task.id} and failed to create new message (channel not found or not sendable)`);
+          return;
+        }
       }
       
       if (isPartial) {

@@ -11,6 +11,8 @@ import config from '../config/config.js';
  * GitHubリポジトリの操作を担当
  */
 export class GitHubService {
+  // 直近のリモートURL（push用）
+  lastRepoUrl?: string;
   private octokit: Octokit;
   
   /**
@@ -58,7 +60,8 @@ export class GitHubService {
    */
   public async cloneRepository(repoUrl: string, targetPath: string): Promise<boolean> {
     logger.info(`リポジトリをクローン中: ${repoUrl} -> ${targetPath}`);
-    
+    // push用にリモートURLを保存
+    this.lastRepoUrl = repoUrl;
     try {
       try {
         await fs.access(targetPath);
@@ -140,6 +143,12 @@ export class GitHubService {
     
     try {
       const git: SimpleGit = simpleGit(repoPath);
+
+      // push前にリモートURLを明示的に上書き
+      if (this.lastRepoUrl) {
+        await git.remote(['set-url', 'origin', this.lastRepoUrl]);
+        logger.info(`リモートURLを上書き: ${this.lastRepoUrl}`);
+      }
       
       await git.push('origin', branchName, ['--set-upstream']);
       
