@@ -203,13 +203,9 @@ file:パス - 特定ファイルに対する指示（例: \`file:src/App.js\`）
    * @param spec プロジェクト仕様
    * @param repoUrl GitHubリポジトリURL
    */
-  private async handleNewProjectCommand(message: Message, spec: string, repoUrl?: string): Promise<void> {
+  private async handleNewProjectCommand(message: Message, spec: string): Promise<void> {
     if (!spec || spec.trim().length === 0) {
-      await message.reply(`プロジェクトの仕様を指定してください。例: \`${this.commandPrefix}new Reactを使ったTODOアプリ https://github.com/yourname/yourrepo\``);
-      return;
-    }
-    if (!repoUrl || repoUrl.trim().length === 0) {
-      await message.reply(`GitHubリポジトリURLを指定してください。例: \`${this.commandPrefix}new Reactを使ったTODOアプリ https://github.com/yourname/yourrepo\``);
+      await message.reply(`プロジェクトの仕様を指定してください。例: \`${this.commandPrefix}new Reactを使ったTODOアプリ\``);
       return;
     }
     
@@ -217,11 +213,10 @@ file:パス - 特定ファイルに対する指示（例: \`file:src/App.js\`）
     const responseMsg = await message.reply('プロジェクト生成リクエストを受け付けました。処理を開始します...');
     
     // タスクを作成
-    const task = this.agentCore.createGitHubTask(
+    const task = this.agentCore.createTask(
       message.author.id,
       message.guild!.id,
       message.channel.id,
-      repoUrl!,
       spec
     );
     
@@ -229,29 +224,36 @@ file:パス - 特定ファイルに対する指示（例: \`file:src/App.js\`）
     this.progressMessages.set(task.id, responseMsg);
     
     // タスクIDを通知
-    await responseMsg.edit(`プロジェクト生成を開始しました。\nタスクID: \`${task.id}\`\n\n**仕様**:\n${spec}\n**リポジトリ**:\n${repoUrl}\n\n_状態: 準備中_`);
+    await responseMsg.edit(`プロジェクト生成を開始しました。\nタスクID: \`${task.id}\`\n\n**仕様**:\n${spec}\n\n_状態: 準備中_`);
     
     try {
       // 非同期でプロジェクト生成を実行
+      logger.info(`Starting project generation for task: ${task.id}`);
       this.agentCore.generateProject(task).then(async (zipPath) => {
         try {
           // ZIPファイルをDiscordに送信
-          const zipFile = new AttachmentBuilder(zipPath, { name: `${path.basename(zipPath)}` });
-          
-          await (message.channel as TextChannel).send({
-            content: `<@${message.author.id}> プロジェクト生成が完了しました。`,
-            files: [zipFile]
-          });
-          
-          // 一時ファイルを削除
-          setTimeout(() => {
-            try {
-              fs.unlinkSync(zipPath);
-              logger.debug(`Removed temporary zip file: ${zipPath}`);
-            } catch (err) {
-              logger.error(`Failed to remove temporary zip file: ${(err as Error).message}`);
-            }
-          }, 5000);
+          logger.info(`Attempting to send ZIP file: ${zipPath}`);
+          if (zipPath) {
+            logger.info(`Creating AttachmentBuilder for file: ${zipPath}`);
+            const zipFile = new AttachmentBuilder(zipPath, { name: `${path.basename(zipPath)}` });
+            
+            logger.info(`Sending message with attachment...`);
+            await (message.channel as TextChannel).send({
+              content: `<@${message.author.id}> プロジェクト生成が完了しました。`,
+              files: [zipFile]
+            });
+            logger.info(`Successfully sent ZIP file to Discord`);
+            
+            // 一時ファイルを削除
+            setTimeout(() => {
+              try {
+                fs.unlinkSync(zipPath);
+                logger.debug(`Removed temporary zip file: ${zipPath}`);
+              } catch (err) {
+                logger.error(`Failed to remove temporary zip file: ${(err as Error).message}`);
+              }
+            }, 5000);
+          }
         } catch (error) {
           logger.error(`Failed to send zip file: ${(error as Error).message}`);
           await (message.channel as TextChannel).send(`<@${message.author.id}> ZIPファイルの送信に失敗しました。エラー: ${(error as Error).message}`);

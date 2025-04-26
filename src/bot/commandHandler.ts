@@ -1,6 +1,8 @@
-import { Message, ApplicationCommandData, CommandInteraction, ChatInputCommandInteraction } from 'discord.js';
+import { Message, ApplicationCommandData, CommandInteraction, ChatInputCommandInteraction, AttachmentBuilder } from 'discord.js';
 import { AgentCore } from '../agent/agentCore.js';
 import logger from '../utils/logger.js';
+import path from 'path';
+import fs from 'fs';
 
 /**
  * Discordコマンドハンドラ
@@ -162,7 +164,38 @@ export class CommandHandler {
     
     try {
       // 非同期でプロジェクト生成を実行
-      this.agentCore.generateProject(task).catch(async (error) => {
+      this.agentCore.generateProject(task).then(async (zipPath) => {
+        try {
+          if (zipPath) {
+            // ZIPファイルをDiscordに送信
+            logger.info(`Attempting to send ZIP file: ${zipPath}`);
+            
+            const zipFile = new AttachmentBuilder(zipPath, { name: `${path.basename(zipPath)}` });
+            
+            await interaction.followUp({
+              content: `<@${interaction.user.id}> プロジェクト生成が完了しました。`,
+              files: [zipFile]
+            });
+            
+            logger.info(`Successfully sent ZIP file to Discord`);
+            
+            // 一時ファイルを削除
+            setTimeout(() => {
+              try {
+                fs.unlinkSync(zipPath);
+                logger.debug(`Removed temporary zip file: ${zipPath}`);
+              } catch (err) {
+                logger.error(`Failed to remove temporary zip file: ${(err as Error).message}`);
+              }
+            }, 5000);
+          } else {
+            await interaction.followUp(`<@${interaction.user.id}> プロジェクト生成が完了しました。`);
+          }
+        } catch (error) {
+          logger.error(`Failed to send zip file: ${(error as Error).message}`);
+          await interaction.followUp(`<@${interaction.user.id}> ZIPファイルの送信に失敗しました。エラー: ${(error as Error).message}`);
+        }
+      }).catch(async (error) => {
         logger.error(`Project generation failed: ${error.message}`);
         // エラーメッセージを送信
         try {

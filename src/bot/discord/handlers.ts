@@ -46,7 +46,7 @@ export async function handleCommand(
   args: string[] = [],
   commandPrefix: string = '/',
   handleHelpCommand?: (message: Message) => Promise<void>,
-  handleNewProjectCommand?: (message: Message, spec: string, repoUrl?: string) => Promise<void>,
+  handleNewProjectCommand?: (message: Message, spec: string) => Promise<void>,
   handleStatusCommand?: (message: Message, taskId?: string) => Promise<void>,
   handleCancelCommand?: (message: Message, taskId?: string) => Promise<void>,
   handleClearCommand?: (message: Message) => Promise<void>
@@ -59,16 +59,9 @@ export async function handleCommand(
       case 'new':
       case 'newproject':
         if (handleNewProjectCommand) {
-          // 最後の引数をrepoUrlとして抽出し、それ以外をspecとして扱う
-          const repoUrlCandidate = args[args.length - 1];
-          const urlPattern = /^https?:\/\/github\.com\/[\w\-]+\/[\w\-]+/i;
-          let repoUrl: string | undefined = undefined;
-          let spec = args.join(' ');
-          if (urlPattern.test(repoUrlCandidate)) {
-            repoUrl = repoUrlCandidate;
-            spec = args.slice(0, -1).join(' ');
-          }
-          await handleNewProjectCommand(message, spec, repoUrl);
+          // 通常のプロジェクト生成のみを処理
+          const spec = args.join(' ');
+          await handleNewProjectCommand(message, spec);
         }
         break;
       case 'status':

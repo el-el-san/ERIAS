@@ -217,6 +217,7 @@ export class ProjectGenerator {
     const zipPath = await this.archiveProject(task);
     
     task.endTime = Date.now();
+    logger.info(`Generated ZIP file: ${zipPath}`);
     
     // 完了メッセージ
     const duration = (task.endTime - task.startTime) / 1000;
@@ -229,7 +230,7 @@ export class ProjectGenerator {
    * プロジェクトをZIPアーカイブに圧縮
    * @param task プロジェクトタスク
    */
-  private async archiveProject(task: ProjectTask): Promise<string> {
+  public async archiveProject(task: ProjectTask): Promise<string> {
     return new Promise<string>((resolve, reject) => {
       const projectName = path.basename(task.projectPath);
       const zipPath = path.join(path.dirname(task.projectPath), `${projectName}.zip`);

@@ -208,7 +208,8 @@ export class AgentCore {
       
       if (task.isGitHubRepo && task.repoUrl && task.repoTask) {
         await this.executeGitHubTask(task);
-        return '';
+        // GitHubタスクの場合も、プロジェクトをアーカイブして返す
+        return await this.projectGenerator.archiveProject(task);
       } else {
         // 全体プロセスのタイムアウトを設定
         return await withTimeout(
@@ -248,6 +249,10 @@ export class AgentCore {
   public async executeGitHubTask(task: ProjectTask): Promise<string> {
     try {
       await this.githubTaskExecutor.executeGitHubTask(task, this.notifyProgress.bind(this));
+      
+      // タスクを完了状態に設定
+      task.status = ProjectStatus.COMPLETED;
+      task.endTime = Date.now();
       
       if (task.pullRequestUrl) {
         return task.pullRequestUrl;

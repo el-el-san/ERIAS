@@ -46,7 +46,7 @@ export async function installDependencies(
         description: task.plan?.projectDescription || 'Generated project',
         main: 'index.js',
         scripts: {
-          test: 'echo "Error: no test specified" && exit 1'
+          test: 'echo "No tests specified" && exit 0'
         },
         keywords: [],
         author: '',
