@@ -1,14 +1,20 @@
-import { Client, Events, GatewayIntentBits, Message, TextChannel, AttachmentBuilder, REST, Routes } from 'discord.js';
-import { AgentCore } from '../agent/agentCore.js';
-import { ProjectTask, ProgressListener } from '../agent/types.js';
+import { Client, GatewayIntentBits, Message, Events, REST, Routes, AttachmentBuilder, TextChannel } from 'discord.js';
+import fs from 'fs';
+import path from 'path';
 import logger from '../utils/logger.js';
 import config from '../config/config.js';
-import path from 'path';
-import fs from 'fs';
-import { GeminiClient } from '../llm/geminiClient.js';
-import { FeedbackMessageHandler } from './feedbackMessageHandler.js';
 import { conversationManager } from '../llm/conversationManager.js';
+import { GeminiClient } from '../llm/geminiClient.js';
+import { ProjectTask } from '../agent/types.js';
+import { AgentCore } from '../agent/agentCore.js';
+import { FeedbackMessageHandler } from './feedbackMessageHandler.js';
 import { CommandHandler } from './commandHandler.js';
+import {
+  handleMessage as extHandleMessage,
+  handleCommand as extHandleCommand,
+  handleConversation as extHandleConversation
+} from './discord/handlers.js';
+import { startBot, stopBot, setupEventListeners } from './discord/events.js';
 
 /**
  * Discordボットインターフェイス
@@ -32,9 +38,7 @@ export class DiscordBot {
   constructor(agentCore: AgentCore) {
     this.agentCore = agentCore;
     this.feedbackHandler = new FeedbackMessageHandler(agentCore);
-    this.commandHandler = new CommandHandler(agentCore); // 追加: CommandHandlerの初期化
-    
-    // Discordクライアントを初期化
+    this.commandHandler = new CommandHandler(agentCore);
     this.client = new Client({
       intents: [
         GatewayIntentBits.Guilds,
@@ -42,39 +46,29 @@ export class DiscordBot {
         GatewayIntentBits.MessageContent,
       ]
     });
-    
-    // イベントリスナーを設定
-    this.setupEventListeners();
-    
-    // 進捗通知リスナーを登録
-    this.agentCore.addProgressListener(this.progressListener.bind(this));
+    // isReadyのsetterを渡す
+    setupEventListeners(
+      this.client,
+      this.commandHandler,
+      this.feedbackHandler,
+      this.agentCore,
+      this.progressListener.bind(this),
+      (ready: boolean) => { this.isReady = ready; },
+      this.commandPrefix,
+      this.handleCommand.bind(this),
+      this.handleConversation.bind(this)
+    );
   }
   
   /**
    * Discordボットを起動
    */
   public async start(): Promise<void> {
-    try {
-      logger.info('Starting Discord bot...');
-      await this.client.login(config.discord.token);
-      logger.info('Discord bot started successfully');
-    } catch (error) {
-      logger.error(`Failed to start Discord bot: ${(error as Error).message}`);
-      throw error;
-    }
+    await startBot(this.client);
   }
-  
-  /**
-   * Discordボットを停止
-   */
+
   public async stop(): Promise<void> {
-    try {
-      logger.info('Stopping Discord bot...');
-      await this.client.destroy();
-      logger.info('Discord bot stopped successfully');
-    } catch (error) {
-      logger.error(`Error stopping Discord bot: ${(error as Error).message}`);
-    }
+    await stopBot(this.client);
   }
   
   /**
@@ -108,43 +102,31 @@ export class DiscordBot {
    * @param message 受信メッセージ
    */
   private async handleMessage(message: Message): Promise<void> {
-    // ボットのメッセージは無視
-    if (message.author.bot) return;
-    
-    // DMは無視（サーバーのみ対応）
-    if (!message.guild) return;
-    
-    // 許可されたギルド/サーバーIDのチェック
-    if (config.discord.allowedGuildIds.length > 0 && 
-        !config.discord.allowedGuildIds.includes(message.guild.id)) {
-      logger.warn(`Message from non-allowed guild: ${message.guild.id}`);
-      return;
-    }
-    
-    // 許可されたユーザーIDのチェック
-    if (config.discord.allowedUserIds.length > 0 && 
-        !config.discord.allowedUserIds.includes(message.author.id)) {
-      logger.warn(`Message from non-allowed user: ${message.author.id}`);
-      return;
-    }
-    
-    // task:IDフォーマットのフィードバックメッセージを処理
-    if (message.content.includes('task:')) {
-      const handled = await this.feedbackHandler.handleMessage(message);
-      if (handled) return;
-    }
-    
-    // コマンドプレフィックスで始まるかチェック
-    if (message.content.startsWith(this.commandPrefix)) {
-      // コマンドと引数を分離
-      const args = message.content.slice(this.commandPrefix.length).trim().split(/ +/);
-      const command = args.shift()?.toLowerCase();
-      
-      await this.handleCommand(message, command, args);
-    } else {
-      // コマンドではない通常のメッセージの場合、LLMと会話
-      await this.handleConversation(message);
-    }
+    await extHandleMessage(
+      message,
+      this.commandPrefix,
+      this.feedbackHandler,
+      this.handleCommand.bind(this),
+      this.handleConversation.bind(this)
+    );
+  }
+
+  private async handleCommand(message: Message, command?: string, args: string[] = []): Promise<void> {
+    await extHandleCommand(
+      message,
+      command,
+      args,
+      this.commandPrefix,
+      this.handleHelpCommand?.bind(this),
+      this.handleNewProjectCommand?.bind(this),
+      this.handleStatusCommand?.bind(this),
+      this.handleCancelCommand?.bind(this),
+      this.handleClearCommand?.bind(this)
+    );
+  }
+
+  private async handleConversation(message: Message): Promise<void> {
+    await extHandleConversation(message);
   }
   
   /**
@@ -153,152 +135,7 @@ export class DiscordBot {
    * @param command コマンド名
    * @param args コマンド引数
    */
-  private async handleCommand(message: Message, command?: string, args: string[] = []): Promise<void> {
-    
-    try {
-      // コマンド処理
-      switch (command) {
-        case 'help':
-          await this.handleHelpCommand(message);
-          break;
-        
-        case 'new':
-        case 'newproject':
-          await this.handleNewProjectCommand(message, args.join(' '));
-          break;
-        
-        case 'status':
-          await this.handleStatusCommand(message, args[0]);
-          break;
-        
-        case 'cancel':
-          await this.handleCancelCommand(message, args[0]);
-          break;
-          
-        case 'clear':
-          await this.handleClearCommand(message);
-          break;
-        
-        default:
-          // 不明なコマンド
-          if (command) {
-            await message.reply(`不明なコマンドです: \`${command}\`\nヘルプを表示するには \`${this.commandPrefix}help\` と入力してください。`);
-          }
-      }
-    } catch (error) {
-      logger.error(`Error handling command ${command}: ${(error as Error).message}`);
-      await message.reply(`コマンド実行中にエラーが発生しました: ${(error as Error).message}`);
-    }
-  }
-  
-  /**
-   * LLMとの会話処理
-   * @param message メッセージオブジェクト
-   */
-  private async handleConversation(message: Message): Promise<void> {
-    try {
-      let responseMsg = await message.reply('考え中...');
-      
-      // Geminiクライアントからインスタンスを取得
-      const geminiClient = new GeminiClient();
-      
-      // システムプロンプト
-      const systemPrompt = "あなたはフレンドリーなアシスタントです。ユーザーからの質問に簡潔かつ役立つ形で答えてください。コードが必要な場合は実用的なコード例を提供してください。前回までの会話を考慮して対応してください。";
-      
-      // 会話履歴を取得
-      const history = conversationManager.getConversationHistory(
-        message.author.id,
-        message.channel.id
-      );
-      
-      // 会話履歴にユーザーのメッセージを追加
-      conversationManager.addMessage(
-        message.author.id,
-        message.channel.id,
-        message.guild ? message.guild.id : 'dm',
-        message.content,
-        false // ユーザーメッセージ
-      );
-      
-      logger.info(`Sending conversation to LLM from user ${message.author.tag}: ${message.content.substring(0, 100)}...`);
-      
-      let responseBuffer = '';
-      let lastUpdateTime = Date.now();
-      const updateInterval = 1000; // 1秒ごとに更新
-      
-      const streamCallback = async (chunk: string, isComplete: boolean) => {
-        responseBuffer += chunk;
-        
-        const currentTime = Date.now();
-        if (isComplete || currentTime - lastUpdateTime >= updateInterval) {
-          lastUpdateTime = currentTime;
-          
-          // 応答が長すぎる場合は分割して送信
-          const maxMessageLength = 2000; // Discordの最大メッセージ長
-          
-          if (responseBuffer.length <= maxMessageLength) {
-            await responseMsg.edit(responseBuffer);
-          } else {
-            const chunks = [];
-            let remainingText = responseBuffer;
-            
-            while (remainingText.length > maxMessageLength) {
-              // 最大長までのチャンクを取得
-              const chunkSize = maxMessageLength;
-              let chunk = remainingText.substring(0, chunkSize);
-              
-              // コードブロックやマークダウンを分割しないようにする
-              if (!chunk.endsWith('\n')) {
-                const lastNewline = chunk.lastIndexOf('\n');
-                if (lastNewline > chunkSize * 0.8) { // 最大長の80%以降に改行があればそこで分割
-                  chunk = chunk.substring(0, lastNewline + 1);
-                }
-              }
-              
-              chunks.push(chunk);
-              remainingText = remainingText.substring(chunk.length);
-            }
-            
-            chunks.push(remainingText);
-            
-            await responseMsg.edit(chunks[0]);
-            
-            for (let i = 1; i < chunks.length - 1; i++) {
-              await message.reply(chunks[i]);
-            }
-            
-            if (chunks.length > 1) {
-              const lastMsg = await message.reply(chunks[chunks.length - 1]);
-              responseMsg = lastMsg;
-              responseBuffer = chunks[chunks.length - 1];
-            }
-          }
-        }
-      };
-      
-      const response = await geminiClient.generateContentStream(
-        message.content,
-        streamCallback,
-        systemPrompt,
-        0.7, // temperature
-        60000, // 60秒タイムアウト
-        history
-      );
-      
-      // 会話履歴にAIのメッセージを追加
-      conversationManager.addMessage(
-        message.author.id,
-        message.channel.id,
-        message.guild ? message.guild.id : 'dm',
-        response,
-        true // AIのメッセージ
-      );
-      
-    } catch (error) {
-      logger.error(`Error in conversation with LLM: ${(error as Error).message}`);
-      await message.reply(`すみません、会話処理中にエラーが発生しました: ${(error as Error).message}`);
-    }
-  }
+  // --- 重複実装削除 ---
   
   /**
    * 会話履歴クリアコマンド処理
