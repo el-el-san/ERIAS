@@ -27,6 +27,12 @@ export async function handleMessage(
     logger.warn(`Message from non-allowed user: ${message.author.id}`);
     return;
   }
+  
+  // 画像生成リクエストを最初にチェック
+  const handled = await feedbackHandler.handleMessage(message);
+  if (handled) return;
+
+  // その他のフィードバックメッセージをチェック  
   if (message.content.includes('task:')) {
     const handled = await feedbackHandler.handleMessage(message);
     if (handled) return;

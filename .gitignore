@@ -11,6 +11,9 @@ dist/
 projects/*
 !projects/.gitkeep
 
+uploads/*
+!uploads/.gitkeep
+
 # ログファイル
 logs/
 *.log

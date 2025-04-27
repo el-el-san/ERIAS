@@ -2,15 +2,29 @@ import { Message } from 'discord.js';
 import { FeedbackPriority, FeedbackType, FeedbackUrgency } from '../agent/types.js';
 import { AgentCore } from '../agent/agentCore.js';
 import logger from '../utils/logger.js';
+import { ImageGenerator } from '../generators/imageGenerator.js';
+import config from '../config/config.js';
 
 /**
  * ユーザーからのフィードバックメッセージを処理するクラス
  */
 export class FeedbackMessageHandler {
   private agentCore: AgentCore;
+  private imageGenerator: ImageGenerator;
+  private imageGeneratorReady: Promise<void>;
   
   constructor(agentCore: AgentCore) {
     this.agentCore = agentCore;
+    this.imageGenerator = new ImageGenerator({
+      apiKey: config.llm.google.apiKey,
+      model: 'gemini-2.0-flash-exp'
+    });
+    
+    // 画像生成器の初期化を待つ
+    this.imageGeneratorReady = new Promise((resolve) => {
+      // インスタンス生成後、少し待ってから ready とみなす
+      setTimeout(() => resolve(), 1000);
+    });
   }
   
   /**
@@ -20,6 +34,12 @@ export class FeedbackMessageHandler {
   public async handleMessage(message: Message): Promise<boolean> {
     // Botのメッセージは無視
     if (message.author.bot) return false;
+    
+    // 画像生成リクエストをチェック
+    if (this.imageGenerator.detectImageRequest(message.content)) {
+      await this.imageGeneratorReady; // 初期化を待つ
+      return await this.handleImageGeneration(message);
+    }
     
     // タスクIDを抽出するための正規表現
     const taskIdRegex = /task:([a-f0-9-]+)/i;
@@ -147,6 +167,50 @@ export class FeedbackMessageHandler {
       return true;
     } catch (error) {
       logger.error(`Failed to reply to feedback message: ${(error as Error).message}`);
+      return false;
+    }
+  }
+
+  /**
+   * 画像生成リクエストを処理
+   * @param message Discordメッセージ
+   */
+  private async handleImageGeneration(message: Message): Promise<boolean> {
+    try {
+      // ユーザーが直接入力を希望しているかチェック
+      const isDirect = message.content.toLowerCase().includes('直接入力') || 
+                      message.content.toLowerCase().includes('そのまま');
+      
+      // 画像生成の開始を通知
+      const initialMsg = isDirect ? 
+        '🎨 画像を生成中です...（プロンプトをそのまま使用）' : 
+        '🎨 画像を生成中です...（AIがプロンプトを最適化中）';
+      
+      await message.reply(initialMsg);
+
+      // 画像を生成
+      const attachment = await this.imageGenerator.generateImage(message.content);
+
+      // 生成された画像を送信
+      const finalMsg = isDirect ? 
+        '✨ 画像を生成しました！（入力プロンプトをそのまま使用）' : 
+        '✨ 画像を生成しました！（AIがプロンプトを最適化）';
+      
+      await message.reply({
+        content: finalMsg,
+        files: [attachment]
+      });
+
+      return true;
+    } catch (error) {
+      logger.error('Failed to generate image', { error });
+      
+      try {
+        await message.reply('❌ 画像の生成に失敗しました。もう一度お試しください。');
+      } catch (replyError) {
+        logger.error('Failed to send error message', { replyError });
+      }
+      
       return false;
     }
   }
