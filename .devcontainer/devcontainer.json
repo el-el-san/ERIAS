@@ -1,0 +1,34 @@
+// .devcontainer/devcontainer.json
+{
+    "name": "ERIAS Dev",
+    "image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bullseye",
+  
+    // ★1) 非機密＋デフォルト値
+    "envFile": "../.env",              // .env が存在すれば読み込む
+    "containerEnv": {
+      "GOOGLE_API_KEY": "${localEnv:GOOGLE_API_KEY:gemini-2.5-flash-preview-04-17}",
+      "MAX_EXECUTION_TIME": "${localEnv:MAX_EXECUTION_TIME:3600000}",
+      "MAX_DEBUG_RETRIES": "${localEnv:MAX_DEBUG_RETRIES:5}",
+      "PROJECTS_DIR": "${localEnv:PROJECTS_DIR:./projects}",
+      "./projects": "${localEnv:./projects:info}"
+    },
+  
+    // ★2) 機密 (Codespaces Secrets → コンテナへ転送)
+    "remoteEnv": {
+      "DISCORD_TOKEN":     "${localEnv:DISCORD_TOKEN}",
+      "DISCORD_CLIENT_ID":  "${localEnv:DISCORD_CLIENT_ID}",
+      "GOOGLE_API_KEY":        "${localEnv:GOOGLE_API_KEY}"
+    },
+  
+    // 推奨シークレット (未設定ユーザーには作成時に入力欄を表示)
+    "secrets": {
+      "DISCORD_TOKEN": { "description": "Discord Bot Token" },
+      "DISCORD_CLIENT_ID": { "description": "Discord Client ID" },
+      "GOOGLE_API_KEY":    { "description": "Google API Key" } 
+    },
+  
+    "postCreateCommand": "npm install",
+    "forwardPorts": [3000],
+    "customizations": { "vscode": { "extensions": ["esbenp.prettier-vscode"] } }
+  }
+  
