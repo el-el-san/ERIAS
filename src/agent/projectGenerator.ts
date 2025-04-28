@@ -65,11 +65,13 @@ export class ProjectGenerator {
     await notifyProgressFn(task, `開発計画が完了しました\n生成ファイル数: ${plan.files.length}\n使用技術: ${this.formatTechStack(plan)}`);
     
     // 計画完了の通知とフィードバック募集
+    // 待機秒数を環境変数から取得（未設定時は30秒）
+    const waitSeconds = Number(process.env.WAIT_SECONDS) || 30;
     await notifyProgressFn(task, `開発計画が完了しました。
-\`task:${task.id}\` をメンションして追加指示を出すことができます。次のフェーズに進む前に30秒間待機します。`);
-    
+\`task:${task.id}\` をメンションして追加指示を出すことができます。次のフェーズに進む前に${waitSeconds}秒間待機します。`);
+
     // 短い待機時間を設けてユーザー入力のチャンスを与える
-    await new Promise(resolve => setTimeout(resolve, 30 * 1000));
+    await new Promise(resolve => setTimeout(resolve, waitSeconds * 1000));
     
     // 2. コーディングフェーズ前にフィードバックを処理
     await this.feedbackHandler.processQueuedFeedbacks(task, "コーディング", notifyProgressFn);
@@ -110,9 +112,9 @@ export class ProjectGenerator {
 +
     // コーディング完了の通知とフィードバック募集
     await notifyProgressFn(task, `コーディングが完了しました。
-\`task:${task.id}\` をメンションして追加指示を出すことができます。次のフェーズに進む前に30秒間待機します。`);
+    \`task:${task.id}\` をメンションして追加指示を出すことができます。次のフェーズに進む前に${waitSeconds}秒間待機します。`);
     
-    await new Promise(resolve => setTimeout(resolve, 30 * 1000));
+    await new Promise(resolve => setTimeout(resolve, waitSeconds * 1000));
     
     // 3. テストフェーズ前にフィードバックを処理
     await this.feedbackHandler.processQueuedFeedbacks(task, "テスト", notifyProgressFn);
@@ -125,9 +127,9 @@ export class ProjectGenerator {
     
     // テスト後のフィードバック時間を確保
     await notifyProgressFn(task, `テストが完了しました（${testResult.success ? '成功' : '一部失敗'}）。
-\`task:${task.id}\` をメンションして緊急の指示がある場合は30秒以内にお知らせください。`);
-    
-    await new Promise(resolve => setTimeout(resolve, 30 * 1000));
+\`task:${task.id}\` をメンションして緊急の指示がある場合は${waitSeconds}秒以内にお知らせください。`);
+
+await new Promise(resolve => setTimeout(resolve, waitSeconds * 1000));
     
     // 保留中のフィードバックを処理
     await this.feedbackHandler.processQueuedFeedbacks(task, "テスト結果対応", notifyProgressFn);

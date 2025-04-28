@@ -6,13 +6,13 @@ src:
       addFeatureFromFeedback.ts: 34
     services:
       notificationService.ts: 108
-    agentCore.ts: 410
+    agentCore.ts: 560
     coder.ts: 79
     debugger.ts: 411
     feedbackHandler.ts: 238
     githubTaskExecutor.ts: 181
-    planner.ts: 357
-    projectGenerator.ts: 307
+    planner.ts: 368
+    projectGenerator.ts: 306
     tester.ts: 244
     types.ts: 238
   bot:
@@ -46,9 +46,9 @@ src:
     index.ts: 85
   platforms:
     discord:
-      discordAdapter.ts: 343
+      discordAdapter.ts: 344
     slack:
-      slackAdapter.ts: 373
+      slackAdapter.ts: 376
     platformManager.ts: 169
     types.ts: 64
   services:
