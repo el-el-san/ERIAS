@@ -438,7 +438,8 @@ export class AgentCore {
       
       // 完了通知
       await this.notificationService.sendNotification(target, {
-        text: `タスク ${taskId} が完了しました！\n生成されたプロジェクトは次のパスにあります：${zipPath}`
+        text: `タスク ${taskId} が完了しました！\n生成されたプロジェクトは次のパスにあります：${zipPath}`,
+        files: [{ path: zipPath, name: path.basename(zipPath), mimeType: 'application/zip' }]
       });
     } catch (error) {
       logger.error(`Error in project generation for task ${taskId}:`, error);

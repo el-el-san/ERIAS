@@ -217,11 +217,20 @@ export class DiscordAdapter implements PlatformAdapter {
         });
       }
       
-      const message = await channel.send({
-        content: content.text || '',
-        files,
-        embeds: content.embeds
-      });
+      // 送信オブジェクトを動的に組み立て
+      let sendPayload: any = {};
+      if (content.text) sendPayload.content = content.text;
+      if (files.length > 0) sendPayload.files = files;
+      if (content.embeds) sendPayload.embeds = content.embeds;
+
+      // テキストのみの場合はstringで送信
+      if (sendPayload.content && !sendPayload.files && !sendPayload.embeds) {
+        const message = await channel.send(sendPayload.content);
+        return message.id;
+      }
+
+      // ファイルまたはembedまたは両方の場合はオブジェクトで送信
+      const message = await channel.send(sendPayload);
       
       return message.id;
     } catch (error) {

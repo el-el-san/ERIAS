@@ -261,50 +261,72 @@ export class SlackAdapter implements PlatformAdapter {
 
   async sendMessage(channelId: string, content: MessageContent): Promise<string | null> {
     try {
-      const blocks = [];
-      
-      // テキスト内容がある場合
-      if (content.text) {
-        blocks.push({
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: content.text
+      // テキスト・ファイル・画像の有無を判定
+      const hasText = !!content.text;
+      const hasImages = content.images && content.images.length > 0;
+      const hasFiles = content.files && content.files.length > 0;
+
+      // 何も送信するものがなければ何もしない
+      if (!hasText && !hasImages && !hasFiles) {
+        logger.warn('sendMessage: No content to send.');
+        return null;
+      }
+
+      let messageTs: string | null = null;
+
+      // テキスト送信
+      if (hasText) {
+        const blocks = [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: content.text
+            }
           }
+        ];
+        const result = await this.app.client.chat.postMessage({
+          channel: channelId,
+          text: content.text,
+          blocks
+        });
+        messageTs = result.ts as string;
+      }
+
+      // ファイル送信（images, files両方対応）
+      const uploadTargets: { file: any, filename: string, initial_comment?: string }[] = [];
+
+      if (hasImages) {
+        for (const image of content.images!) {
+          uploadTargets.push({
+            file: image,
+            filename: 'image.png',
+            initial_comment: hasText ? undefined : 'Image from ERIAS'
+          });
+        }
+      }
+      if (hasFiles) {
+        for (const file of content.files!) {
+          uploadTargets.push({
+            file: file.content,
+            filename: file.name,
+            initial_comment: hasText ? undefined : file.name
+          });
+        }
+      }
+
+      for (const target of uploadTargets) {
+        await this.app.client.files.uploadV2({
+          channel_id: channelId,
+          file: target.file,
+          filename: target.filename,
+          initial_comment: target.initial_comment,
+          thread_ts: messageTs || undefined
         });
       }
-      
-      // メッセージ送信
-      const result = await this.app.client.chat.postMessage({
-        channel: channelId,
-        text: content.text || 'Message from ERIAS',
-        blocks: blocks.length > 0 ? blocks : undefined
-      });
-      
-      // ファイルアップロード（画像や添付ファイル）
-      if (content.images && content.images.length > 0) {
-        for (const image of content.images) {
-          await this.app.client.files.uploadV2({
-            channel_id: channelId,
-            thread_ts: result.ts,
-            file: image,
-            filename: 'image.png'
-          });
-        }
-      }
-      
-      if (content.files && content.files.length > 0) {
-        for (const file of content.files) {
-          await this.app.client.files.uploadV2({
-            channel_id: channelId,
-            thread_ts: result.ts,
-            file: file.content,
-            filename: file.name
-          });
-        }
-      }
-      
-      return result.ts as string;
+
+      // テキスト送信時はそのts、ファイルのみ送信時はnull
+      return messageTs;
     } catch (error) {
       logger.error('Error sending message to Slack:', error);
       return null;

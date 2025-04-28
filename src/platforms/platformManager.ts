@@ -162,9 +162,25 @@ export class PlatformManager {
       logger.error(`No adapter found for platform type: ${target.platformType}`);
       return null;
     }
-    
+
+    const hasText = !!content.text;
+    const hasFiles = !!(content.files && content.files.length > 0);
+
     try {
-      return await adapter.sendMessage(target.channelId, content);
+      if (hasText && hasFiles) {
+        // テキスト送信
+        const textId = await adapter.sendMessage(target.channelId, { text: content.text });
+        // ファイル送信
+        await adapter.sendMessage(target.channelId, { files: content.files });
+        return textId;
+      } else if (hasText) {
+        return await adapter.sendMessage(target.channelId, { text: content.text });
+      } else if (hasFiles) {
+        return await adapter.sendMessage(target.channelId, { files: content.files });
+      } else {
+        logger.warn('sendMessage called with empty content');
+        return null;
+      }
     } catch (error) {
       logger.error(`Error sending message to ${target.platformType}:`, error);
       return null;
@@ -180,9 +196,25 @@ export class PlatformManager {
       logger.error(`No adapter found for platform type: ${target.platformType}`);
       return false;
     }
-    
+
+    const hasText = !!content.text;
+    const hasFiles = !!(content.files && content.files.length > 0);
+
     try {
-      return await adapter.updateMessage(target.channelId, messageId, content);
+      if (hasText && hasFiles) {
+        // テキスト更新
+        const textResult = await adapter.updateMessage(target.channelId, messageId, { text: content.text });
+        // ファイル更新
+        const filesResult = await adapter.updateMessage(target.channelId, messageId, { files: content.files });
+        return textResult && filesResult;
+      } else if (hasText) {
+        return await adapter.updateMessage(target.channelId, messageId, { text: content.text });
+      } else if (hasFiles) {
+        return await adapter.updateMessage(target.channelId, messageId, { files: content.files });
+      } else {
+        logger.warn('updateMessage called with empty content');
+        return false;
+      }
     } catch (error) {
       logger.error(`Error updating message on ${target.platformType}:`, error);
       return false;
