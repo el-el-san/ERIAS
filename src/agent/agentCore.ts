@@ -3,12 +3,23 @@
  * 開発プロセス全体のオーケストレーション
  */
 import { v4 as uuidv4 } from 'uuid';
+import path from 'path';
+import fs from 'fs/promises';
 import { NotificationTarget, PlatformType } from '../platforms/types';
 import { NotificationService } from './services/notificationService';
 import { logger } from '../tools/logger';
 import { GeminiClient } from '../llm/geminiClient';
 import { ConversationMessage, conversationManager } from '../llm/conversationManager';
 import { PromptBuilder, PromptType } from '../llm/promptBuilder';
+import { ProjectGenerator } from './projectGenerator';
+import { Planner } from './planner';
+import { Coder } from './coder';
+import { Tester } from './tester';
+import { Debugger } from './debugger';
+import { FeedbackHandler } from './feedbackHandler';
+import { config } from '../config/config';
+import { getProjectPath } from '../tools/fileSystem';
+import { ProjectTask, ProjectStatus, FeedbackQueue, UserFeedback } from './types';
 
 // タスク状態の型定義
 export interface TaskStatus {
@@ -31,14 +42,26 @@ export interface FeedbackOptions extends NotificationTarget {
 
 export class AgentCore {
   private tasks: Map<string, TaskStatus> = new Map();
+  private projectTasks: Map<string, ProjectTask> = new Map();
   private notificationService: NotificationService;
   private geminiClient: GeminiClient;
   private promptBuilder: PromptBuilder;
+  private projectGenerator: ProjectGenerator;
   
   constructor() {
     this.notificationService = NotificationService.getInstance();
     this.geminiClient = new GeminiClient();
     this.promptBuilder = new PromptBuilder();
+    
+    // 各コンポーネントを初期化
+    const planner = new Planner(this.geminiClient, this.promptBuilder);
+    const coder = new Coder(this.geminiClient, this.promptBuilder);
+    const tester = new Tester();
+    const debugger_ = new Debugger(this.geminiClient, this.promptBuilder);
+    const feedbackHandler = new FeedbackHandler(planner, coder);
+    
+    // プロジェクトジェネレーターを初期化
+    this.projectGenerator = new ProjectGenerator(planner, coder, tester, debugger_, feedbackHandler);
   }
 
   /**
@@ -147,9 +170,11 @@ export class AgentCore {
    * 新規プロジェクト作成の開始
    */
   async startNewProject(spec: string, target: NotificationTarget): Promise<string> {
-    const taskId = this.generateTaskId();
+    // UUIDベースのタスクID生成
+    const taskId = uuidv4().substring(0, 8);
+    logger.info(`Starting new project with ID: ${taskId}`);
     
-    // タスク状態の初期化
+    // 基本的なタスク状態の初期化（AgentCore内部用）
     const taskStatus: TaskStatus = {
       id: taskId,
       state: 'planning',
@@ -160,14 +185,48 @@ export class AgentCore {
     
     this.tasks.set(taskId, taskStatus);
     
+    // プロジェクトディレクトリのパスを作成
+    const projectPath = path.join(config.PROJECTS_DIR || './projects', taskId);
+
+    try {
+      // ディレクトリが存在しない場合は作成
+      await fs.mkdir(projectPath, { recursive: true });
+    } catch (error) {
+      logger.error(`Failed to create project directory: ${projectPath}`, error);
+      throw new Error(`プロジェクトディレクトリの作成に失敗しました: ${(error as Error).message}`);
+    }
+    
+    // ProjectTask オブジェクトの作成（ProjectGenerator用）
+    const projectTask: ProjectTask = {
+      id: taskId,
+      userId: target.userId,
+      guildId: '', // DiscordのguildIdまたはSlackのworkspaceId
+      channelId: target.channelId,
+      specification: spec,
+      status: ProjectStatus.PENDING,
+      errors: [],
+      startTime: Date.now(),
+      projectPath: projectPath,
+      lastProgressUpdate: Date.now(),
+      feedbackQueue: {
+        taskId: taskId,
+        feedbacks: [],
+        lastProcessedIndex: -1
+      },
+      hasCriticalFeedback: false
+    };
+    
+    // タスクをマップに保存
+    this.projectTasks.set(taskId, projectTask);
+    
     // 通知
     await this.notificationService.sendNotification(target, {
       text: `プロジェクト作成タスク（ID: ${taskId}）を開始しました。\n仕様：${spec}\n\n初期状態：計画立案フェーズ`
     });
     
-    // 非同期でタスク実行（実際の実装ではこの部分が複雑になります）
-    this.executeProjectTask(taskId, spec, target).catch(error => {
-      logger.error(`Error executing project task ${taskId}:`, error);
+    // 非同期でプロジェクト生成実行
+    this.executeProjectGeneration(taskId, target).catch(error => {
+      logger.error(`Error executing project generation ${taskId}:`, error);
     });
     
     return taskId;
@@ -279,7 +338,39 @@ export class AgentCore {
       text: `タスク ${taskId} へのフィードバックを処理中...`
     });
     
-    // TODO: 実際のフィードバック適用ロジックを実装
+    // ProjectTask オブジェクトとフィードバックキューの取得
+    const projectTask = this.projectTasks.get(taskId);
+    if (!projectTask) {
+      logger.error(`ProjectTask object not found for task ${taskId}`);
+      return false;
+    }
+    
+    // フィードバックオブジェクトの作成
+    const userFeedback: UserFeedback = {
+      id: uuidv4(),
+      taskId: taskId,
+      timestamp: Date.now(),
+      content: feedback,
+      priority: options.isUrgent ? 'high' : 'normal',
+      urgency: options.isUrgent ? 'critical' : 'normal',
+      type: options.isFeature ? 'feature' : 
+            options.isFix ? 'fix' : 
+            options.isCode ? 'code' : 'general',
+      targetFile: options.filePath,
+      status: 'pending'
+    };
+    
+    // フィードバックキューに追加
+    projectTask.feedbackQueue.feedbacks.push(userFeedback);
+    if (options.isUrgent) {
+      projectTask.hasCriticalFeedback = true;
+    }
+    
+    this.projectTasks.set(taskId, projectTask);
+    
+    await this.notificationService.sendNotification(options, {
+      text: `タスク ${taskId} にフィードバックを追加しました。フィードバックは次の適切なタイミングで処理されます。`
+    });
     
     return true;
   }
@@ -292,68 +383,68 @@ export class AgentCore {
   }
 
   /**
-   * プロジェクト作成タスクの実行（非同期、バックグラウンド処理）
-   * 実際の実装ではここに複雑なロジックが入ります
+   * プロジェクト生成の実行（実際のProjectGeneratorを使用）
    */
-  private async executeProjectTask(taskId: string, spec: string, target: NotificationTarget): Promise<void> {
-    // この実装はサンプルであり、実際の実装では各フェーズに対応するコンポーネントを呼び出します
+  private async executeProjectGeneration(taskId: string, target: NotificationTarget): Promise<void> {
+    logger.info(`Executing project generation for task ${taskId}`);
+    
+    const projectTask = this.projectTasks.get(taskId);
+    if (!projectTask) {
+      logger.error(`ProjectTask not found for task ${taskId}`);
+      return;
+    }
+    
     try {
-      // 計画フェーズ
-      await this.updateTaskProgress(taskId, 'planning', 0.2, target, '要件分析中...');
-      await new Promise(resolve => setTimeout(resolve, 1000)); // 処理をシミュレート
-      
-      await this.updateTaskProgress(taskId, 'planning', 0.5, target, 'アーキテクチャ設計中...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      await this.updateTaskProgress(taskId, 'planning', 0.9, target, 'ファイル構造設計中...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // コーディングフェーズ
-      await this.updateTaskProgress(taskId, 'coding', 0.1, target, 'スケルトンコード生成中...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      await this.updateTaskProgress(taskId, 'coding', 0.4, target, 'コア機能実装中...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      await this.updateTaskProgress(taskId, 'coding', 0.8, target, '補助機能実装中...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // テストフェーズ
-      await this.updateTaskProgress(taskId, 'testing', 0.3, target, 'ユニットテスト実行中...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      await this.updateTaskProgress(taskId, 'testing', 0.7, target, '統合テスト実行中...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // 完了
-      const task = this.tasks.get(taskId);
-      if (task) {
-        task.state = 'complete';
-        task.progress = 1.0;
-        task.endTime = new Date();
-        task.description = 'プロジェクト生成が完了しました';
+      // 進捗通知関数
+      const notifyProgress = async (task: ProjectTask, message: string): Promise<void> => {
+        logger.debug(`Progress update for task ${task.id}: ${message}`);
         
-        this.tasks.set(taskId, task);
+        // タスク状態の更新
+        const taskStatus = this.tasks.get(task.id);
+        if (taskStatus) {
+          taskStatus.state = this.mapProjectStatusToTaskState(task.status);
+          taskStatus.progress = this.calculateProgressFromStatus(task.status);
+          taskStatus.description = message;
+          this.tasks.set(task.id, taskStatus);
+        }
         
-        await this.notificationService.sendNotification(target, {
-          text: `タスク ${taskId} が完了しました！\n生成されたプロジェクトをご確認ください。`
-        });
+        // 通知送信
+        await this.notificationService.sendNotification(target, { text: message });
+      };
+      
+      // ProjectGeneratorを使用してプロジェクト生成を実行
+      const zipPath = await this.projectGenerator.executeProjectGeneration(projectTask, notifyProgress);
+      
+      // タスク状態の更新
+      const taskStatus = this.tasks.get(taskId);
+      if (taskStatus) {
+        taskStatus.state = 'complete';
+        taskStatus.progress = 1.0;
+        taskStatus.endTime = new Date();
+        taskStatus.description = 'プロジェクト生成が完了しました';
+        this.tasks.set(taskId, taskStatus);
       }
+      
+      // 完了通知
+      await this.notificationService.sendNotification(target, {
+        text: `タスク ${taskId} が完了しました！\n生成されたプロジェクトは次のパスにあります：${zipPath}`
+      });
     } catch (error) {
-      logger.error(`Error in task execution ${taskId}:`, error);
+      logger.error(`Error in project generation for task ${taskId}:`, error);
       
-      const task = this.tasks.get(taskId);
-      if (task) {
-        task.state = 'failed';
-        task.endTime = new Date();
-        task.description = `エラーが発生しました: ${(error as Error).message}`;
-        
-        this.tasks.set(taskId, task);
-        
-        await this.notificationService.sendNotification(target, {
-          text: `タスク ${taskId} の実行中にエラーが発生しました: ${(error as Error).message}`
-        });
+      // エラー状態の更新
+      const taskStatus = this.tasks.get(taskId);
+      if (taskStatus) {
+        taskStatus.state = 'failed';
+        taskStatus.endTime = new Date();
+        taskStatus.description = `エラーが発生しました: ${(error as Error).message}`;
+        this.tasks.set(taskId, taskStatus);
       }
+      
+      // エラー通知
+      await this.notificationService.sendNotification(target, {
+        text: `タスク ${taskId} の実行中にエラーが発生しました: ${(error as Error).message}`
+      });
     }
   }
 
@@ -453,5 +544,55 @@ export class AgentCore {
     const emptyPart = '░'.repeat(emptyLength);
     
     return `[${filledPart}${emptyPart}]`;
+  }
+  
+  /**
+   * ProjectStatusからTaskStatusの状態への変換
+   */
+  private mapProjectStatusToTaskState(status: ProjectStatus): TaskStatus['state'] {
+    switch (status) {
+      case ProjectStatus.PENDING:
+      case ProjectStatus.PLANNING:
+        return 'planning';
+      case ProjectStatus.CODING:
+        return 'coding';
+      case ProjectStatus.TESTING:
+        return 'testing';
+      case ProjectStatus.DEBUGGING:
+        return 'debugging';
+      case ProjectStatus.COMPLETED:
+        return 'complete';
+      case ProjectStatus.FAILED:
+        return 'failed';
+      case ProjectStatus.CANCELLED:
+        return 'canceled';
+      default:
+        return 'planning';
+    }
+  }
+  
+  /**
+   * ProjectStatusから進捗率の計算
+   */
+  private calculateProgressFromStatus(status: ProjectStatus): number {
+    switch (status) {
+      case ProjectStatus.PENDING:
+        return 0.0;
+      case ProjectStatus.PLANNING:
+        return 0.2;
+      case ProjectStatus.CODING:
+        return 0.5;
+      case ProjectStatus.TESTING:
+        return 0.8;
+      case ProjectStatus.DEBUGGING:
+        return 0.9;
+      case ProjectStatus.COMPLETED:
+        return 1.0;
+      case ProjectStatus.FAILED:
+      case ProjectStatus.CANCELLED:
+        return 1.0;
+      default:
+        return 0.0;
+    }
   }
 }
