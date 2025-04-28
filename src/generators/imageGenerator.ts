@@ -115,7 +115,7 @@ Enhanced: "A cute silver tabby cat with bright green eyes, sitting elegantly on 
   /**
    * 画像を生成
    */
-  async generateImage(userRequest: string): Promise<AttachmentBuilder> {
+  async generateImage(userRequest: string): Promise<Buffer> {
     try {
       if (!this.initialized) {
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -155,11 +155,11 @@ Enhanced: "A cute silver tabby cat with bright green eyes, sitting elegantly on 
             const buffer = Buffer.from(part.inlineData.data || '', 'base64');
             const fileName = `generated_${Date.now()}.png`;
             
-            // ファイルに保存
+            // ファイルに保存（必要なら残す）
             await writeFile(`./uploads/${fileName}`, buffer);
             
-            // Discordの添付ファイルとして返す
-            return new AttachmentBuilder(buffer, { name: fileName });
+            // Bufferとして返す
+            return buffer;
           }
         }
       }

@@ -1,3 +1,4 @@
+import { AttachmentBuilder } from 'discord.js';
 /**
  * Discord用プラットフォームアダプター
  */
@@ -121,12 +122,12 @@ export class DiscordAdapter implements PlatformAdapter {
           respondToCommand: async (content: MessageContent) => {
             try {
               const files = content.images?.map((image, index) => {
-                return { attachment: image, name: `image${index}.png` };
+                return new AttachmentBuilder(image, { name: `image${index}.png` });
               }) || [];
               
               if (content.files) {
                 content.files.forEach(file => {
-                  files.push({ attachment: file.content, name: file.name });
+                  files.push(new AttachmentBuilder(file.content, { name: file.name }));
                 });
               }
               
@@ -207,12 +208,12 @@ export class DiscordAdapter implements PlatformAdapter {
       }
       
       const files = content.images?.map((image, index) => {
-        return { attachment: image, name: `image${index}.png` };
+        return new AttachmentBuilder(image, { name: `image${index}.png` });
       }) || [];
       
       if (content.files) {
         content.files.forEach(file => {
-          files.push({ attachment: file.content, name: file.name });
+          files.push(new AttachmentBuilder(file.content, { name: file.name }));
         });
       }
       
@@ -242,12 +243,12 @@ export class DiscordAdapter implements PlatformAdapter {
       }
       
       const files = content.images?.map((image, index) => {
-        return { attachment: image, name: `image${index}.png` };
+        return new AttachmentBuilder(image, { name: `image${index}.png` });
       }) || [];
       
       if (content.files) {
         content.files.forEach(file => {
-          files.push({ attachment: file.content, name: file.name });
+          files.push(new AttachmentBuilder(file.content, { name: file.name }));
         });
       }
       

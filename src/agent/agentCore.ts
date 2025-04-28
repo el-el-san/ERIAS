@@ -20,6 +20,8 @@ import { FeedbackHandler } from './feedbackHandler';
 import { config } from '../config/config';
 import { getProjectPath } from '../tools/fileSystem';
 import { ProjectTask, ProjectStatus, FeedbackQueue, UserFeedback } from './types';
+import { ImageGenerator } from '../generators/imageGenerator';
+import { GoogleGeminiConfig } from '../generators/types';
 
 // タスク状態の型定義
 export interface TaskStatus {
@@ -47,7 +49,8 @@ export class AgentCore {
   private geminiClient: GeminiClient;
   private promptBuilder: PromptBuilder;
   private projectGenerator: ProjectGenerator;
-  
+  private imageGenerator: import('../generators/imageGenerator').ImageGenerator;
+
   constructor() {
     this.notificationService = NotificationService.getInstance();
     this.geminiClient = new GeminiClient();
@@ -62,6 +65,14 @@ export class AgentCore {
     
     // プロジェクトジェネレーターを初期化
     this.projectGenerator = new ProjectGenerator(planner, coder, tester, debugger_, feedbackHandler);
+
+    // ImageGenerator初期化
+    const geminiConfig = {
+      apiKey: config.GOOGLE_API_KEY,
+      model: config.DEFAULT_MODEL || 'gemini-2.0-flash-exp'
+    };
+    const { ImageGenerator } = require('../generators/imageGenerator');
+    this.imageGenerator = new ImageGenerator(geminiConfig);
   }
 
   /**
@@ -269,12 +280,12 @@ export class AgentCore {
     logger.info(`Generating image for prompt: ${prompt}`);
     
     try {
-      // TODO: 実際の画像生成ロジックを実装
-      // これはプレースホルダー実装です
-      // await new Promise(resolve => setTimeout(resolve, 2000)); // 生成時間をシミュレート
-      
-      // ダミー画像を返す（実際の実装では、Gemini APIを使用）
-      return Buffer.from('dummy image data');
+      // Gemini APIで画像生成
+      if (!this.imageGenerator) {
+        throw new Error('ImageGeneratorが初期化されていません');
+      }
+      const buffer = await this.imageGenerator.generateImage(prompt);
+      return buffer;
     } catch (error) {
       logger.error(`Error generating image: ${error}`);
       return null;

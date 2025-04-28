@@ -176,8 +176,8 @@ export class SlackAdapter implements PlatformAdapter {
                 if (content.images && content.images.length > 0) {
                   for (const image of content.images) {
                     uploadPromises.push(
-                      this.app.client.files.upload({
-                        channels: command.channel_id,
+                      this.app.client.files.uploadV2({
+                        channel_id: command.channel_id,
                         initial_comment: 'Image from ERIAS',
                         file: image,
                         filename: 'image.png'
@@ -189,8 +189,8 @@ export class SlackAdapter implements PlatformAdapter {
                 if (content.files && content.files.length > 0) {
                   for (const file of content.files) {
                     uploadPromises.push(
-                      this.app.client.files.upload({
-                        channels: command.channel_id,
+                      this.app.client.files.uploadV2({
+                        channel_id: command.channel_id,
                         initial_comment: file.name,
                         file: file.content,
                         filename: file.name
@@ -284,8 +284,8 @@ export class SlackAdapter implements PlatformAdapter {
       // ファイルアップロード（画像や添付ファイル）
       if (content.images && content.images.length > 0) {
         for (const image of content.images) {
-          await this.app.client.files.upload({
-            channels: channelId,
+          await this.app.client.files.uploadV2({
+            channel_id: channelId,
             thread_ts: result.ts,
             file: image,
             filename: 'image.png'
@@ -295,8 +295,8 @@ export class SlackAdapter implements PlatformAdapter {
       
       if (content.files && content.files.length > 0) {
         for (const file of content.files) {
-          await this.app.client.files.upload({
-            channels: channelId,
+          await this.app.client.files.uploadV2({
+            channel_id: channelId,
             thread_ts: result.ts,
             file: file.content,
             filename: file.name
@@ -338,8 +338,8 @@ export class SlackAdapter implements PlatformAdapter {
       // 新しいファイルが含まれている場合は追加で送信
       if (content.images && content.images.length > 0) {
         for (const image of content.images) {
-          await this.app.client.files.upload({
-            channels: channelId,
+          await this.app.client.files.uploadV2({
+            channel_id: channelId,
             thread_ts: messageId,
             file: image,
             filename: 'image.png'
@@ -349,8 +349,8 @@ export class SlackAdapter implements PlatformAdapter {
       
       if (content.files && content.files.length > 0) {
         for (const file of content.files) {
-          await this.app.client.files.upload({
-            channels: channelId,
+          await this.app.client.files.uploadV2({
+            channel_id: channelId,
             thread_ts: messageId,
             file: file.content,
             filename: file.name
