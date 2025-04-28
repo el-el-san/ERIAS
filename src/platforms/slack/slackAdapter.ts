@@ -136,6 +136,11 @@ export class SlackAdapter implements PlatformAdapter {
             const value = rawValue.replace(/^"(.*)"$/, '$1');
             options[key] = value;
           });
+
+          // key=value形式が1つもなければ全文をspecに格納
+          if (optionPairs.length === 0) {
+            options['spec'] = text;
+          }
           
           // ユーザー情報の取得
           const userInfo = await this.app.client.users.info({ user: command.user_id });
