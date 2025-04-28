@@ -6,7 +6,7 @@ src:
       addFeatureFromFeedback.ts: 34
     services:
       notificationService.ts: 108
-    agentCore.ts: 310
+    agentCore.ts: 410
     coder.ts: 79
     debugger.ts: 411
     feedbackHandler.ts: 238
@@ -21,7 +21,7 @@ src:
       handlers.ts: 195
     commandHandler.ts: 263
     discordBot.ts: 354
-    feedbackMessageHandler.ts: 160
+    feedbackMessageHandler.ts: 220
   coder:
     dependency.ts: 88
     generation.ts: 269
@@ -39,16 +39,16 @@ src:
   llm:
     conversationManager.ts: 321
     geminiClient.ts: 338
-    promptBuilder.ts: 147
+    promptBuilder.ts: 132
     toolRegistry.ts: 72
   planner:
     adjustPlanStub.ts: 60
     index.ts: 85
   platforms:
     discord:
-      discordAdapter.ts: 288
+      discordAdapter.ts: 343
     slack:
-      slackAdapter.ts: 338
+      slackAdapter.ts: 373
     platformManager.ts: 169
     types.ts: 64
   services:

@@ -59,43 +59,62 @@ export class FeedbackMessageHandler {
    */
   private async handleConversation(message: PlatformMessage): Promise<void> {
     try {
-      logger.info(`会話メッセージ受信: ${message.content.substring(0, 50)}${message.content.length > 50 ? '...' : ''}`);
+      // 詳細ログ追加
+      logger.debug(`会話メッセージ受信 (${message.platformType}) - 内容: ${message.content}`);
+      logger.debug(`メッセージ情報 - チャンネル: ${message.channelId}, ユーザー: ${message.author.id}`);
       console.log(`会話メッセージ受信: ${message.content.substring(0, 50)}${message.content.length > 50 ? '...' : ''}`);
       
       // メッセージが空の場合は対応しない
       if (!message.content.trim()) {
+        logger.debug('空のメッセージのため処理をスキップ');
         return;
       }
 
-      // ユーザーメンションや特定のプレフィックスチェック
+      // アダプター取得
       const adapter = this.platformManager.getAdapter(message.platformType);
       
-      // すべてのメッセージに応答するように変更
-      logger.info(`メッセージを受信しました: ${message.content}`);
+      if (!adapter) {
+        logger.error(`プラットフォームタイプ ${message.platformType} のアダプターが見つかりません`);
+        return;
+      }
+      
+      // デバッグ用の応答を先に送信
+      await adapter.sendMessage(message.channelId, {
+        text: `デバッグ: メッセージを受信し、処理中です: "${message.content}"`
+      });
       
       // LLMを使用して応答を生成
-      if (adapter) {
-        try {
-          // Gemini APIを使用して応答を生成
-          const response = await this.agentCore.generateResponse(message.content, {
-            userId: message.author.id,
-            platformType: message.author.platformType,
-            channelId: message.channelId
-          });
-          
-          // 応答を送信
-          await adapter.sendMessage(message.channelId, {
-            text: response || `すみません、応答の生成中に問題が発生しました。`
-          });
-        } catch (error) {
-          logger.error(`LLM応答生成中にエラーが発生しました:`, error);
-          await adapter.sendMessage(message.channelId, {
-            text: `すみません、応答の生成中に問題が発生しました: ${(error as Error).message}`
-          });
+      try {
+        logger.debug('応答生成を開始');
+        // Gemini APIを使用して応答を生成
+        const response = await this.agentCore.generateResponse(message.content, {
+          userId: message.author.id,
+          platformType: message.author.platformType,
+          channelId: message.channelId
+        });
+        
+        logger.debug(`応答生成が完了しました: ${response?.substring(0, 100)}...`);
+        
+        // 応答を送信
+        await adapter.sendMessage(message.channelId, {
+          text: response || `すみません、応答の生成中に問題が発生しました。`
+        });
+      } catch (error) {
+        logger.error(`LLM応答生成中にエラーが発生しました:`, error);
+        // エラー詳細をログに記録
+        if (error instanceof Error) {
+          logger.error(`エラー詳細: ${error.message}\n${error.stack}`);
         }
+        await adapter.sendMessage(message.channelId, {
+          text: `すみません、応答の生成中に問題が発生しました: ${(error as Error).message}`
+        });
       }
     } catch (error) {
       logger.error('Error handling conversation:', error);
+      // 全体エラーの詳細をログに記録
+      if (error instanceof Error) {
+        logger.error(`会話処理エラー詳細: ${error.message}\n${error.stack}`);
+      }
     }
   }
 

@@ -39,53 +39,72 @@ export class SlackAdapter implements PlatformAdapter {
 
   private setupEventHandlers(): void {
     // メッセージ受信イベント
-    this.app.event('message', async ({ event, say }) => {
-      // 型ガード: event.user, event.channel, event.ts, event.text, event.files
-      if (typeof event !== 'object' || !event) return;
+    this.app.message(/.*/i, async ({ message, say }) => {
+      // デバッグログ追加
+      logger.debug(`Slack message received: ${JSON.stringify(message)}`);
+      
+      // 型ガード: message.user, message.channel, message.ts, message.text, message.files
+      if (typeof message !== 'object' || !message) return;
       // ボットメッセージは無視
-      if ('bot_id' in event && event.bot_id) return;
+      if ('bot_id' in message && message.bot_id) {
+        logger.debug(`Ignoring bot message with bot_id: ${message.bot_id}`);
+        return;
+      }
       // 許可されたチャンネルチェック（設定されている場合）
       if (
         this.allowedChannelIds.length > 0 &&
-        (!('channel' in event) || !this.allowedChannelIds.includes(event.channel as string))
+        (!('channel' in message) || !this.allowedChannelIds.includes(message.channel as string))
       ) {
+        logger.debug(`Message from non-allowed channel: ${(message as any).channel}`);
         return;
       }
       // 必須プロパティの型ガード
       if (
-        !('user' in event) ||
-        typeof event.user !== 'string' ||
-        !('channel' in event) ||
-        typeof event.channel !== 'string' ||
-        !('ts' in event) ||
-        typeof event.ts !== 'string'
+        !('user' in message) ||
+        typeof message.user !== 'string' ||
+        !('channel' in message) ||
+        typeof message.channel !== 'string' ||
+        !('ts' in message) ||
+        typeof message.ts !== 'string'
       ) {
-        logger.warn('Slack event missing required properties:', event);
+        logger.warn('Slack message missing required properties:', message);
         return;
       }
+      
       if (this.messageCallback) {
         try {
           // ユーザー情報の取得
-          const userInfo = await this.app.client.users.info({ user: event.user });
+          const userInfo = await this.app.client.users.info({ user: message.user });
           const platformMessage: PlatformMessage = {
-            id: event.ts,
-            content: typeof event.text === 'string' ? event.text : '',
+            id: message.ts,
+            content: typeof message.text === 'string' ? message.text : '',
             author: {
-              id: event.user,
-              name: userInfo.user?.name || event.user,
-              platformId: event.user,
+              id: message.user,
+              name: userInfo.user?.name || message.user,
+              platformId: message.user,
               platformType: PlatformType.SLACK
             },
-            channelId: event.channel,
-            timestamp: new Date(parseInt(event.ts) * 1000),
-            attachments: ('files' in event && Array.isArray((event as any).files)) ? (event as any).files : [],
+            channelId: message.channel,
+            timestamp: new Date(parseInt(message.ts) * 1000),
+            attachments: ('files' in message && Array.isArray((message as any).files)) ? (message as any).files : [],
             platformType: PlatformType.SLACK,
-            rawMessage: event
+            rawMessage: message
           };
+          
+          // 自動返信テスト用（後で削除）
+          await say(`デバッグ: メッセージを受信しました「${message.text}」`);
+          
+          // メッセージコールバックの実行
           await this.messageCallback(platformMessage);
         } catch (error) {
           logger.error('Error processing Slack message:', error);
+          // エラー情報を詳細に記録
+          if (error instanceof Error) {
+            logger.error(`Error details: ${error.message}\n${error.stack}`);
+          }
         }
+      } else {
+        logger.warn('Message callback not registered');
       }
     });
     
@@ -206,8 +225,29 @@ export class SlackAdapter implements PlatformAdapter {
 
   async initialize(): Promise<void> {
     try {
+      // サーバー起動前にボットユーザーIDを取得
+      try {
+        // BoltのClientは初期化時にtokenSet済み
+        const authResult = await this.app.client.auth.test();
+        logger.info(`Slack bot authenticated as: ${authResult.user} (ID: ${authResult.user_id})`);
+        
+        // ボット情報の詳細を取得
+        const botInfo = await this.app.client.users.info({ user: authResult.user_id as string });
+        logger.info(`Slack bot details - Name: ${botInfo.user?.name}, Real name: ${botInfo.user?.real_name}`);
+      } catch (authError) {
+        logger.error('Failed to get Slack bot auth info:', authError);
+      }
+      
+      // サーバー起動
       await this.app.start(config.SLACK_PORT || 3000);
       logger.info(`Slack adapter initialized successfully on port ${config.SLACK_PORT || 3000}`);
+      
+      // 許可チャンネルの設定を記録
+      if (this.allowedChannelIds.length > 0) {
+        logger.info(`Slack allowed channel IDs: ${this.allowedChannelIds.join(', ')}`);
+      } else {
+        logger.info('Slack allowed channel IDs: All channels');
+      }
     } catch (error) {
       logger.error('Failed to initialize Slack adapter:', error);
       throw error;
