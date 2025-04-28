@@ -1,62 +1,167 @@
-#!/usr/bin/env node
-
-import { AgentCore } from './agent/agentCore.js';
-import { DiscordBot } from './bot/discordBot.js';
-import { Planner } from './agent/planner.js';
-import { Coder } from './agent/coder.js';
-import { Tester } from './agent/tester.js';
-import { Debugger } from './agent/debugger.js';
-import { GeminiClient } from './llm/geminiClient.js';
-import { PromptBuilder } from './llm/promptBuilder.js';
-import logger from './utils/logger.js';
-import config from './config/config.js';
-
 /**
- * メインアプリケーション
- * 初期化と起動処理を行う
+ * ERIAS - メイン起動ポイント
+ * マルチプラットフォーム対応版
  */
+import { PlatformManager } from './platforms/platformManager';
+import { CommandHandler } from './bot/commandHandler';
+import { FeedbackMessageHandler } from './bot/feedbackMessageHandler';
+import { AgentCore } from './agent/agentCore';
+import { config, validateConfig } from './config/config';
+import { logger } from './tools/logger';
+import { PlatformCommandDefinition } from './platforms/types';
+
 async function main() {
+  console.log(`
+    ███████╗██████╗ ██╗ █████╗ ███████╗
+    ██╔════╝██╔══██╗██║██╔══██╗██╔════╝
+    █████╗  ██████╔╝██║███████║███████╗
+    ██╔══╝  ██╔══██╗██║██╔══██║╚════██║
+    ███████╗██║  ██║██║██║  ██║███████║
+    ╚══════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═╝╚══════╝
+    
+    Discord + Slack 対応 AI開発エージェント v${config.APP_VERSION}
+  `);
+  
+  // 設定の検証
+  const { isValid, errors } = validateConfig();
+  if (!isValid) {
+    console.error('設定エラー:');
+    errors.forEach(error => console.error(`- ${error}`));
+    process.exit(1);
+  }
+  
   try {
-    logger.info('Discord AI Agent is starting...');
+    logger.info('ERIASを起動中...');
     
-    // 共通コンポーネントを初期化
-    const geminiClient = new GeminiClient();
-    const promptBuilder = new PromptBuilder();
+    // エージェントコアの初期化
+    const agentCore = new AgentCore();
     
-    // 各モジュールのインスタンスを作成
-    const planner = new Planner(geminiClient, promptBuilder);
-    const coder = new Coder(geminiClient, promptBuilder);
-    const tester = new Tester();
-    const debugger_ = new Debugger(geminiClient, promptBuilder);
+    // コマンドハンドラーとフィードバックハンドラーのセットアップ
+    const commandHandler = new CommandHandler(agentCore);
+    const feedbackMessageHandler = new FeedbackMessageHandler(agentCore);
     
-    // AgentCoreを初期化
-    const agentCore = new AgentCore(planner, coder, tester, debugger_);
+    // プラットフォームマネージャーの初期化
+    const platformManager = PlatformManager.getInstance();
     
-    // Discordボットを初期化
-    const discordBot = new DiscordBot(agentCore);
-    
-    // ボットを起動
-    await discordBot.start();
-    
-    logger.info(`Discord AI Agent is running (version ${config.version})`);
-    
-    // シャットダウンハンドラーを設定
-    process.on('SIGINT', async () => {
-      logger.info('Received SIGINT signal. Shutting down...');
-      await discordBot.stop();
-      process.exit(0);
+    // メッセージとコマンドのハンドラーを登録
+    platformManager.addMessageHandler(async (message) => {
+      await feedbackMessageHandler.handleMessage(message);
     });
     
-    process.on('SIGTERM', async () => {
-      logger.info('Received SIGTERM signal. Shutting down...');
-      await discordBot.stop();
-      process.exit(0);
+    platformManager.addCommandHandler(async (command) => {
+      await commandHandler.handleCommand(command);
     });
+    
+    // プラットフォームアダプターの初期化
+    await platformManager.initializeAdapters();
+    
+    // コマンド定義（プラットフォーム共通）
+    const commands: PlatformCommandDefinition[] = [
+      {
+        name: 'newproject',
+        description: '新しいプロジェクトを開始します',
+        options: [
+          {
+            name: 'spec',
+            description: 'プロジェクト仕様',
+            type: 'string',
+            required: true
+          }
+        ]
+      },
+      {
+        name: 'status',
+        description: 'プロジェクトの進捗状況を確認します',
+        options: [
+          {
+            name: 'taskid',
+            description: 'タスクID',
+            type: 'string',
+            required: true
+          }
+        ]
+      },
+      {
+        name: 'cancel',
+        description: '実行中のプロジェクトをキャンセルします',
+        options: [
+          {
+            name: 'taskid',
+            description: 'タスクID',
+            type: 'string',
+            required: true
+          }
+        ]
+      },
+      {
+        name: 'help',
+        description: 'ヘルプを表示します',
+        options: []
+      },
+      {
+        name: 'githubrepo',
+        description: '既存リポジトリに機能を追加します',
+        options: [
+          {
+            name: 'repo',
+            description: 'リポジトリURL',
+            type: 'string',
+            required: true
+          },
+          {
+            name: 'task',
+            description: '実装するタスク',
+            type: 'string',
+            required: true
+          }
+        ]
+      }
+    ];
+    
+    // すべてのプラットフォームにコマンド登録
+    await platformManager.registerCommandsToAllPlatforms(commands);
+    
+    logger.info('ERIASが正常に起動しました');
+    console.log('ERIAS マルチプラットフォーム対応版が起動しました');
+    
+    // アクティブなプラットフォームの表示
+    const adapters = platformManager.getAllAdapters();
+    console.log(`アクティブなプラットフォーム: ${adapters.map(a => a.getAdapterType()).join(', ')}`);
+    
   } catch (error) {
-    logger.error(`Failed to start application: ${(error as Error).message}`);
+    logger.error('起動中にエラーが発生しました:', error);
+    console.error('起動中にエラーが発生しました:', error);
     process.exit(1);
   }
 }
 
-// アプリケーションを起動
-main();
+// アプリケーション起動
+main().catch(error => {
+  logger.error('予期しないエラーが発生しました:', error);
+  console.error('予期しないエラーが発生しました:', error);
+  process.exit(1);
+});
+
+// 終了処理
+process.on('SIGINT', () => {
+  logger.info('ERIASを終了中...');
+  console.log('ERIASを終了中...');
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  logger.info('ERIASを終了中...');
+  console.log('ERIASを終了中...');
+  process.exit(0);
+});
+
+process.on('uncaughtException', (error) => {
+  logger.error('未処理の例外が発生しました:', error);
+  console.error('未処理の例外が発生しました:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('未処理のPromise拒否が発生しました:', reason);
+  console.error('未処理のPromise拒否が発生しました:', reason);
+});

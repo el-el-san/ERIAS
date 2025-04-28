@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, Content } from '@google/generative-ai';
 import logger from '../utils/logger.js';
-import config from '../config/config.js';
+import { config } from '../config/config.js';
 import { withRetry } from '../utils/asyncUtils.js';
 import { ConversationMessage } from './conversationManager.js';
 
@@ -17,8 +17,8 @@ export class GeminiClient {
    * @param model 使用するモデル（指定がない場合は環境変数から読み込み）
    */
   constructor(
-    apiKey: string = config.llm.google.apiKey,
-    model: string = config.llm.google.defaultModel
+    apiKey: string = config.GOOGLE_API_KEY,
+    model: string = config.DEFAULT_MODEL
   ) {
     this.client = new GoogleGenerativeAI(apiKey);
     this.model = model;

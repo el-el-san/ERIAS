@@ -1,417 +1,445 @@
-import path from 'path';
-import fs from 'fs/promises';
-import { v4 as uuidv4 } from 'uuid';
-import {
-  ProjectTask,
-  ProjectStatus,
-  ProgressListener,
-  FeedbackPriority,
-  FeedbackUrgency,
-  FeedbackType,
-  UserFeedback
-} from './types.js';
-import { Planner } from './planner.js';
-import { Coder } from './coder.js';
-import { Tester } from './tester.js';
-import { Debugger } from './debugger.js';
-import logger from '../utils/logger.js';
-import config from '../config/config.js';
-import { getProjectPath } from '../tools/fileSystem.js';
-import { withTimeout } from '../utils/asyncUtils.js';
-import { FeedbackHandler } from './feedbackHandler.js';
-import { ProjectGenerator } from './projectGenerator.js';
-import { GitHubTaskExecutor } from './githubTaskExecutor.js';
-
 /**
  * エージェントコア
- * 全体のオーケストレーションを行う
+ * 開発プロセス全体のオーケストレーション
  */
+import { v4 as uuidv4 } from 'uuid';
+import { NotificationTarget, PlatformType } from '../platforms/types';
+import { NotificationService } from './services/notificationService';
+import { logger } from '../tools/logger';
+import { GeminiClient } from '../llm/geminiClient';
+import { ConversationMessage, conversationManager } from '../llm/conversationManager';
+import { PromptBuilder, PromptType } from '../llm/promptBuilder';
+
+// タスク状態の型定義
+export interface TaskStatus {
+  id: string;
+  state: 'planning' | 'coding' | 'testing' | 'debugging' | 'complete' | 'canceled' | 'failed';
+  progress: number;
+  startTime: Date;
+  endTime?: Date;
+  description?: string;
+}
+
+// フィードバックオプションの型定義
+export interface FeedbackOptions extends NotificationTarget {
+  isUrgent?: boolean;
+  isFeature?: boolean;
+  isFix?: boolean;
+  isCode?: boolean;
+  filePath?: string;
+}
+
 export class AgentCore {
-  private planner: Planner;
-  private coder: Coder;
-  private tester: Tester;
-  private debugger: Debugger;
-  private feedbackHandler: FeedbackHandler;
-  private projectGenerator: ProjectGenerator;
-  private githubTaskExecutor: GitHubTaskExecutor;
-  private progressListeners: ProgressListener[] = [];
-  private activeTasks: Map<string, ProjectTask> = new Map();
-  private pendingFeedbackRequests: Map<string, { resolve: (feedback: string | null) => void, timeoutHandler: NodeJS.Timeout }> = new Map();
+  private tasks: Map<string, TaskStatus> = new Map();
+  private notificationService: NotificationService;
+  private geminiClient: GeminiClient;
+  private promptBuilder: PromptBuilder;
   
-  /**
-   * AgentCoreを初期化
-   * @param planner 計画立案モジュール
-   * @param coder コード生成モジュール
-   * @param tester テスト実行モジュール
-   * @param debugger デバッグモジュール
-   */
-  constructor(planner: Planner, coder: Coder, tester: Tester, debugger_: Debugger) {
-    this.planner = planner;
-    this.coder = coder;
-    this.tester = tester;
-    this.debugger = debugger_;
-    this.feedbackHandler = new FeedbackHandler(this.planner, this.coder);
-    this.projectGenerator = new ProjectGenerator(
-      this.planner,
-      this.coder,
-      this.tester,
-      this.debugger,
-      this.feedbackHandler
-    );
-    this.githubTaskExecutor = new GitHubTaskExecutor(this.coder, this.tester);
+  constructor() {
+    this.notificationService = NotificationService.getInstance();
+    this.geminiClient = new GeminiClient();
+    this.promptBuilder = new PromptBuilder();
   }
-  
+
   /**
-   * 進捗リスナーを登録
-   * @param listener 進捗リスナー関数
+   * LLMを使用してユーザーメッセージに応答を生成
    */
-  public addProgressListener(listener: ProgressListener): void {
-    this.progressListeners.push(listener);
-  }
-  
-  /**
-   * 進捗リスナーを削除
-   * @param listener 進捗リスナー関数
-   */
-  public removeProgressListener(listener: ProgressListener): void {
-    const index = this.progressListeners.indexOf(listener);
-    if (index !== -1) {
-      this.progressListeners.splice(index, 1);
-    }
-  }
-  
-  /**
-   * 進捗更新を全リスナーに通知
-   * @param task プロジェクトタスク
-   * @param message 進捗メッセージ
-   * @param isPartial 部分的な更新かどうか（ストリーミング用）
-   */
-  public async notifyProgress(task: ProjectTask, message: string, isPartial: boolean = false): Promise<void> {
-    if (!isPartial) {
-      task.lastProgressUpdate = Date.now();
-      task.currentAction = message;
-      
-      logger.info(`[${task.id}] ${message}`);
-    }
+  async generateResponse(message: string, target: NotificationTarget): Promise<string> {
+    logger.info(`Generating LLM response for message: ${message}`);
     
-    for (const listener of this.progressListeners) {
-      try {
-        await listener(task, message, isPartial);
-      } catch (error) {
-        logger.error(`Error in progress listener: ${(error as Error).message}`);
-      }
-    }
-  }
-  
-  /**
-   * 新しいプロジェクトタスクを作成
-   * @param userId ユーザーID
-   * @param guildId サーバーID
-   * @param channelId チャンネルID
-   * @param specification 要求仕様
-   */
-  public createTask(userId: string, guildId: string, channelId: string, specification: string): ProjectTask {
-    const taskId = uuidv4();
-    const projectPath = getProjectPath(taskId);
-    
-    const task: ProjectTask = {
-      id: taskId,
-      userId,
-      guildId,
-      channelId,
-      specification,
-      status: ProjectStatus.PENDING,
-      errors: [],
-      startTime: Date.now(),
-      projectPath,
-      lastProgressUpdate: Date.now(),
-      feedbackQueue: {
-        taskId,
-        feedbacks: [],
-        lastProcessedIndex: 0
-      },
-      hasCriticalFeedback: false,
-      currentContextualFeedback: []
-    };
-    
-    this.activeTasks.set(taskId, task);
-    logger.info(`Created new task: ${taskId}`);
-    
-    return task;
-  }
-  
-  /**
-   * GitHubリポジトリタスクを作成
-   * @param userId ユーザーID
-   * @param guildId サーバーID
-   * @param channelId チャンネルID
-   * @param repoUrl GitHubリポジトリURL
-   * @param taskDescription タスクの説明
-   */
-  public createGitHubTask(
-    userId: string,
-    guildId: string,
-    channelId: string,
-    repoUrl: string,
-    taskDescription: string
-  ): ProjectTask {
-    const taskId = uuidv4();
-    const projectPath = getProjectPath(taskId);
-    
-    const task: ProjectTask = {
-      id: taskId,
-      userId,
-      guildId,
-      channelId,
-      specification: taskDescription,
-      status: ProjectStatus.PENDING,
-      errors: [],
-      startTime: Date.now(),
-      projectPath,
-      lastProgressUpdate: Date.now(),
-      feedbackQueue: {
-        taskId,
-        feedbacks: [],
-        lastProcessedIndex: 0
-      },
-      hasCriticalFeedback: false,
-      currentContextualFeedback: [],
-      isGitHubRepo: true,
-      repoUrl,
-      repoTask: taskDescription
-    };
-    
-    this.activeTasks.set(taskId, task);
-    logger.info(`Created new GitHub task: ${taskId} for repo: ${repoUrl}`);
-    
-    return task;
-  }
-  
-  /**
-   * タスクIDからタスクを取得
-   * @param taskId タスクID
-   */
-  public getTask(taskId: string): ProjectTask | undefined {
-    return this.activeTasks.get(taskId);
-  }
-  
-  /**
-   * プロジェクトを生成
-   * 全体のプロセスを実行
-   * @param task プロジェクトタスク
-   * @returns 生成済みプロジェクトのパス
-   */
-  public async generateProject(task: ProjectTask): Promise<string> {
     try {
-      // プロジェクトディレクトリを作成
-      await fs.mkdir(task.projectPath, { recursive: true });
+      // 会話履歴を取得
+      const history = conversationManager.getConversationHistory(target.userId, target.channelId);
       
-      if (task.isGitHubRepo && task.repoUrl && task.repoTask) {
-        await this.executeGitHubTask(task);
-        // GitHubタスクの場合も、プロジェクトをアーカイブして返す
-        return await this.projectGenerator.archiveProject(task);
-      } else {
-        // 全体プロセスのタイムアウトを設定
-        return await withTimeout(
-          this.projectGenerator.executeProjectGeneration(task, this.notifyProgress.bind(this)),
-          config.agent.maxExecutionTime,
-          `Project generation timed out after ${config.agent.maxExecutionTime}ms`
+      // ユーザーメッセージを会話履歴に追加
+      conversationManager.addMessage(
+        target.userId,
+        target.channelId,
+        '', // ギルドIDが不要な場合は空文字列
+        message,
+        false // ユーザーからのメッセージ
+      );
+      
+      // 特別なキーワードに応じたダミー応答
+      // 始めはダミー実装を維持（API連携までの移行期間用）
+      if (message.toLowerCase().includes('help') || message.toLowerCase().includes('ヘルプ')) {
+        const helpResponse = `ERIASへようこそ！以下のコマンドが利用可能です：
+
+/help - このヘルプメッセージを表示
+/newproject [仕様] - 新しいプロジェクトを開始
+/status [taskID] - タスクの状態を確認
+/cancel [taskID] - タスクをキャンセル
+/githubrepo [URL] [タスク] - GitHubリポジトリに機能を追加`;
+        
+        // 会話履歴にアシスタントの応答を追加
+        conversationManager.addMessage(
+          target.userId,
+          target.channelId,
+          '',
+          helpResponse,
+          true // アシスタントからのメッセージ
         );
+        
+        return helpResponse;
+      }
+      
+      try {
+        // システムプロンプトを取得
+        const systemPrompt = this.promptBuilder.getTemplate(PromptType.CONVERSATION) || 
+          `あなたはERIAS、自律型AI開発エージェントです。ユーザーが質問したり会話したりしたいときは、丁寧で友好的な応答をします。スラッシュコマンドについて説明することもできます。`;
+        
+        // LLMを使って実際に応答を生成
+        const response = await this.geminiClient.generateContent(
+          message,
+          systemPrompt,
+          0.7, // temperature
+          30000, // timeout
+          history
+        );
+        
+        // 会話履歴にアシスタントの応答を追加
+        conversationManager.addMessage(
+          target.userId,
+          target.channelId,
+          '',
+          response,
+          true // アシスタントからのメッセージ
+        );
+        
+        return response;
+      } catch (llmError) {
+        logger.error(`Gemini API error: ${(llmError as Error).message}`);
+        
+        // APIエラーが発生した場合はフォールバックメッセージ
+        const fallbackResponse = `すみません、応答の生成中に問題が発生しました。直接コマンドを使用してみてください：
+/help - 利用可能なコマンドを表示`;
+        
+        // エラーメッセージも会話履歴に追加
+        conversationManager.addMessage(
+          target.userId,
+          target.channelId,
+          '',
+          fallbackResponse,
+          true
+        );
+        
+        return fallbackResponse;
       }
     } catch (error) {
-      // エラー発生時の処理
-      task.status = ProjectStatus.FAILED;
-      task.endTime = Date.now();
-      
-      const errorMsg = `Project generation failed: ${(error as Error).message}`;
-      logger.error(errorMsg);
-      
-      await this.notifyProgress(task, errorMsg);
-      
-      throw error;
-    } finally {
-      // 完了時にタスクをクリーンアップ
-      setTimeout(() => {
-        // 大きなタスクデータをメモリから解放
-        if (task.status === ProjectStatus.COMPLETED || task.status === ProjectStatus.FAILED) {
-          this.activeTasks.delete(task.id);
-          logger.debug(`Removed completed task from memory: ${task.id}`);
-        }
-      }, 60000); // 1分後にクリーンアップ
+      logger.error(`Error in generateResponse: ${(error as Error).message}`);
+      return `すみません、エラーが発生しました。しばらくしてから再度お試しください。`;
     }
   }
-  
+
   /**
-   * GitHubリポジトリタスクを実行
-   * @param task プロジェクトタスク
-   * @returns プルリクエストのURL
+   * 新規プロジェクト作成の開始
    */
-  public async executeGitHubTask(task: ProjectTask): Promise<string> {
-    try {
-      await this.githubTaskExecutor.executeGitHubTask(task, this.notifyProgress.bind(this));
-      
-      // タスクを完了状態に設定
-      task.status = ProjectStatus.COMPLETED;
-      task.endTime = Date.now();
-      
-      if (task.pullRequestUrl) {
-        return task.pullRequestUrl;
-      } else {
-        throw new Error('プルリクエストの作成に失敗しました');
-      }
-    } catch (error) {
-      // エラー発生時の処理
-      task.status = ProjectStatus.FAILED;
-      task.endTime = Date.now();
-      
-      const errorMsg = `GitHubタスクの実行に失敗しました: ${(error as Error).message}`;
-      logger.error(errorMsg);
-      
-      await this.notifyProgress(task, errorMsg);
-      
-      throw error;
-    }
-  }
-  
-  /**
-   * タスクをキャンセル
-   * @param taskId タスクID
-   */
-  public async cancelTask(taskId: string): Promise<boolean> {
-    const task = this.activeTasks.get(taskId);
-    if (!task) {
-      return false;
-    }
+  async startNewProject(spec: string, target: NotificationTarget): Promise<string> {
+    const taskId = this.generateTaskId();
     
-    task.status = ProjectStatus.CANCELLED;
-    task.endTime = Date.now();
-    
-    await this.notifyProgress(task, 'タスクがキャンセルされました');
-    
-    // 大きなタスクデータをメモリから解放
-    this.activeTasks.delete(taskId);
-    
-    return true;
-  }
-  
-  /**
-   * ユーザーフィードバックをキューに追加
-   * @param taskId タスクID
-   * @param userId ユーザーID
-   * @param content フィードバック内容
-   * @param priority 優先度
-   * @param urgency 緊急度
-   * @param type フィードバックタイプ
-   * @param targetFile 対象ファイル
-   */
-  public async queueUserFeedback(
-    taskId: string,
-    userId: string,
-    content: string,
-    priority: FeedbackPriority = 'normal',
-    urgency: FeedbackUrgency = 'normal',
-    type: FeedbackType = 'general',
-    targetFile?: string
-  ): Promise<boolean> {
-    const task = this.getTask(taskId);
-    
-    if (!task || task.userId !== userId) {
-      return false;
-    }
-    
-    const feedback: UserFeedback = {
-      id: uuidv4(),
-      taskId,
-      timestamp: Date.now(),
-      content,
-      priority,
-      urgency,
-      type,
-      targetFile,
-      status: 'pending'
+    // タスク状態の初期化
+    const taskStatus: TaskStatus = {
+      id: taskId,
+      state: 'planning',
+      progress: 0,
+      startTime: new Date(),
+      description: '計画立案を開始中...'
     };
     
-    // キューに追加
-    if (priority === 'high') {
-      task.feedbackQueue.feedbacks.unshift(feedback);
-    } else {
-      task.feedbackQueue.feedbacks.push(feedback);
-    }
+    this.tasks.set(taskId, taskStatus);
     
-    // 緊急フィードバックの場合はフラグを立てる
-    if (urgency === 'critical') {
-      task.hasCriticalFeedback = true;
-      
-      // 現在実行中のフェーズに応じたメッセージを表示
-      let interruptMessage = `⚠️ 緊急の指示を受け付けました: "${content}"`;
-      
-      if (task.status === ProjectStatus.TESTING) {
-        interruptMessage += "\nテスト完了後、再計画を検討します。";
-      } else if (task.status === ProjectStatus.CODING) {
-        interruptMessage += "\n現在のファイル生成完了後、変更を適用します。";
-      }
-      
-      await this.notifyProgress(task, interruptMessage);
-    } else {
-      await this.notifyProgress(task, `新しい指示をキューに追加しました: "${content}"`);
-    }
+    // 通知
+    await this.notificationService.sendNotification(target, {
+      text: `プロジェクト作成タスク（ID: ${taskId}）を開始しました。\n仕様：${spec}\n\n初期状態：計画立案フェーズ`
+    });
     
-    // フィードバック待ちのリクエストがあれば応答
-    const pendingRequest = this.pendingFeedbackRequests.get(taskId);
-    if (pendingRequest) {
-      clearTimeout(pendingRequest.timeoutHandler);
-      pendingRequest.resolve(content);
-      this.pendingFeedbackRequests.delete(taskId);
-    }
+    // 非同期でタスク実行（実際の実装ではこの部分が複雑になります）
+    this.executeProjectTask(taskId, spec, target).catch(error => {
+      logger.error(`Error executing project task ${taskId}:`, error);
+    });
     
-    return true;
+    return taskId;
   }
-  
+
   /**
-   * ユーザーフィードバックの処理状態を変更
-   * @param taskId タスクID
-   * @param feedbackId フィードバックID
-   * @param status 新しい状態
-   * @param appliedPhase 適用されたフェーズ
+   * GitHub連携タスクの開始
    */
-  public updateFeedbackStatus(
-    taskId: string,
-    feedbackId: string,
-    status: 'pending' | 'processing' | 'applied' | 'rejected',
-    appliedPhase?: string
-  ): boolean {
-    const task = this.getTask(taskId);
+  async startGitHubTask(repoUrl: string, task: string, target: NotificationTarget): Promise<string> {
+    const taskId = this.generateTaskId();
+    
+    // タスク状態の初期化
+    const taskStatus: TaskStatus = {
+      id: taskId,
+      state: 'planning',
+      progress: 0,
+      startTime: new Date(),
+      description: 'GitHubリポジトリの分析中...'
+    };
+    
+    this.tasks.set(taskId, taskStatus);
+    
+    // 通知
+    await this.notificationService.sendNotification(target, {
+      text: `GitHub連携タスク（ID: ${taskId}）を開始しました。\nリポジトリ：${repoUrl}\nタスク：${task}\n\n初期状態：リポジトリ分析フェーズ`
+    });
+    
+    // 非同期でGitHubタスク実行
+    this.executeGitHubTask(taskId, repoUrl, task, target).catch(error => {
+      logger.error(`Error executing GitHub task ${taskId}:`, error);
+    });
+    
+    return taskId;
+  }
+
+  /**
+   * 画像生成
+   */
+  async generateImage(prompt: string, target: NotificationTarget): Promise<Buffer | null> {
+    logger.info(`Generating image for prompt: ${prompt}`);
+    
+    try {
+      // TODO: 実際の画像生成ロジックを実装
+      // これはプレースホルダー実装です
+      // await new Promise(resolve => setTimeout(resolve, 2000)); // 生成時間をシミュレート
+      
+      // ダミー画像を返す（実際の実装では、Gemini APIを使用）
+      return Buffer.from('dummy image data');
+    } catch (error) {
+      logger.error(`Error generating image: ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * タスク状態の取得
+   */
+  getTaskStatus(taskId: string): TaskStatus | undefined {
+    return this.tasks.get(taskId);
+  }
+
+  /**
+   * タスクのキャンセル
+   */
+  async cancelTask(taskId: string, userId: string): Promise<boolean> {
+    const task = this.tasks.get(taskId);
     if (!task) return false;
     
-    const feedback = task.feedbackQueue.feedbacks.find(f => f.id === feedbackId);
-    if (!feedback) return false;
-    
-    feedback.status = status;
-    if (appliedPhase) {
-      feedback.appliedPhase = appliedPhase;
+    // 完了済みタスクはキャンセル不可
+    if (task.state === 'complete' || task.state === 'canceled' || task.state === 'failed') {
+      return false;
     }
+    
+    // タスク状態を更新
+    task.state = 'canceled';
+    task.endTime = new Date();
+    task.description = `ユーザー ${userId} によってキャンセルされました`;
+    
+    this.tasks.set(taskId, task);
+    return true;
+  }
+
+  /**
+   * タスクへのフィードバック処理
+   */
+  async processFeedback(taskId: string, feedback: string, options: FeedbackOptions): Promise<boolean> {
+    const task = this.tasks.get(taskId);
+    if (!task) return false;
+    
+    // 完了済みタスクにはフィードバック不可
+    if (task.state === 'complete' || task.state === 'canceled' || task.state === 'failed') {
+      await this.notificationService.sendNotification(options, {
+        text: `タスク ${taskId} は既に ${task.state} 状態のため、フィードバックを適用できません。`
+      });
+      return false;
+    }
+    
+    // フィードバックのログ記録
+    logger.info(`Feedback received for task ${taskId}: ${feedback}`, {
+      isUrgent: options.isUrgent,
+      isFeature: options.isFeature,
+      isFix: options.isFix,
+      isCode: options.isCode,
+      filePath: options.filePath
+    });
+    
+    // フィードバック処理の通知
+    await this.notificationService.sendNotification(options, {
+      text: `タスク ${taskId} へのフィードバックを処理中...`
+    });
+    
+    // TODO: 実際のフィードバック適用ロジックを実装
     
     return true;
   }
-  
+
   /**
-   * ユーザー入力待機
-   * @param task プロジェクトタスク
-   * @param timeout タイムアウト時間(ms)
+   * タスクIDの生成
    */
-  private async waitForUserFeedback(task: ProjectTask, timeout: number): Promise<string | null> {
-    return new Promise<string | null>(resolve => {
-      // タイムアウトハンドラ
-      const timeoutHandler = setTimeout(() => {
-        this.pendingFeedbackRequests.delete(task.id);
-        resolve(null);
-      }, timeout);
+  private generateTaskId(): string {
+    return uuidv4().substring(0, 8);
+  }
+
+  /**
+   * プロジェクト作成タスクの実行（非同期、バックグラウンド処理）
+   * 実際の実装ではここに複雑なロジックが入ります
+   */
+  private async executeProjectTask(taskId: string, spec: string, target: NotificationTarget): Promise<void> {
+    // この実装はサンプルであり、実際の実装では各フェーズに対応するコンポーネントを呼び出します
+    try {
+      // 計画フェーズ
+      await this.updateTaskProgress(taskId, 'planning', 0.2, target, '要件分析中...');
+      await new Promise(resolve => setTimeout(resolve, 1000)); // 処理をシミュレート
       
-      // このタスクのフィードバック要求を登録
-      this.pendingFeedbackRequests.set(task.id, {
-        resolve,
-        timeoutHandler
-      });
+      await this.updateTaskProgress(taskId, 'planning', 0.5, target, 'アーキテクチャ設計中...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      await this.updateTaskProgress(taskId, 'planning', 0.9, target, 'ファイル構造設計中...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // コーディングフェーズ
+      await this.updateTaskProgress(taskId, 'coding', 0.1, target, 'スケルトンコード生成中...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      await this.updateTaskProgress(taskId, 'coding', 0.4, target, 'コア機能実装中...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      await this.updateTaskProgress(taskId, 'coding', 0.8, target, '補助機能実装中...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // テストフェーズ
+      await this.updateTaskProgress(taskId, 'testing', 0.3, target, 'ユニットテスト実行中...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      await this.updateTaskProgress(taskId, 'testing', 0.7, target, '統合テスト実行中...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // 完了
+      const task = this.tasks.get(taskId);
+      if (task) {
+        task.state = 'complete';
+        task.progress = 1.0;
+        task.endTime = new Date();
+        task.description = 'プロジェクト生成が完了しました';
+        
+        this.tasks.set(taskId, task);
+        
+        await this.notificationService.sendNotification(target, {
+          text: `タスク ${taskId} が完了しました！\n生成されたプロジェクトをご確認ください。`
+        });
+      }
+    } catch (error) {
+      logger.error(`Error in task execution ${taskId}:`, error);
+      
+      const task = this.tasks.get(taskId);
+      if (task) {
+        task.state = 'failed';
+        task.endTime = new Date();
+        task.description = `エラーが発生しました: ${(error as Error).message}`;
+        
+        this.tasks.set(taskId, task);
+        
+        await this.notificationService.sendNotification(target, {
+          text: `タスク ${taskId} の実行中にエラーが発生しました: ${(error as Error).message}`
+        });
+      }
+    }
+  }
+
+  /**
+   * GitHub連携タスクの実行（非同期、バックグラウンド処理）
+   */
+  private async executeGitHubTask(taskId: string, repoUrl: string, task: string, target: NotificationTarget): Promise<void> {
+    // この実装はサンプルであり、実際の実装ではGitHubサービスと連携します
+    try {
+      // リポジトリ分析
+      await this.updateTaskProgress(taskId, 'planning', 0.2, target, 'リポジトリをクローン中...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      await this.updateTaskProgress(taskId, 'planning', 0.5, target, 'リポジトリ構造を分析中...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // 実装
+      await this.updateTaskProgress(taskId, 'coding', 0.2, target, '機能の実装中...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      await this.updateTaskProgress(taskId, 'coding', 0.6, target, 'テストの追加中...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // プルリクエスト作成
+      await this.updateTaskProgress(taskId, 'coding', 0.9, target, 'プルリクエストを準備中...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // 完了
+      const task = this.tasks.get(taskId);
+      if (task) {
+        task.state = 'complete';
+        task.progress = 1.0;
+        task.endTime = new Date();
+        task.description = 'GitHub連携タスクが完了しました';
+        
+        this.tasks.set(taskId, task);
+        
+        await this.notificationService.sendNotification(target, {
+          text: `GitHub連携タスク ${taskId} が完了しました！\nプルリクエストが作成されました。`
+        });
+      }
+    } catch (error) {
+      logger.error(`Error in GitHub task execution ${taskId}:`, error);
+      
+      const task = this.tasks.get(taskId);
+      if (task) {
+        task.state = 'failed';
+        task.endTime = new Date();
+        task.description = `エラーが発生しました: ${(error as Error).message}`;
+        
+        this.tasks.set(taskId, task);
+        
+        await this.notificationService.sendNotification(target, {
+          text: `GitHub連携タスク ${taskId} の実行中にエラーが発生しました: ${(error as Error).message}`
+        });
+      }
+    }
+  }
+
+  /**
+   * タスク進捗の更新
+   */
+  private async updateTaskProgress(
+    taskId: string, 
+    state: TaskStatus['state'], 
+    progress: number, 
+    target: NotificationTarget, 
+    description?: string
+  ): Promise<void> {
+    const task = this.tasks.get(taskId);
+    if (!task) return;
+    
+    task.state = state;
+    task.progress = progress;
+    task.description = description || task.description;
+    
+    this.tasks.set(taskId, task);
+    
+    // プログレスバーを生成
+    const progressBar = this.generateProgressBar(progress);
+    const progressPercentage = Math.round(progress * 100);
+    
+    // 通知
+    await this.notificationService.sendNotification(target, {
+      text: `タスク ${taskId} の進捗状況:\n状態: ${state}\n進捗: ${progressPercentage}%\n${progressBar}\n${description || ''}`
     });
+  }
+
+  /**
+   * プログレスバーの生成
+   */
+  private generateProgressBar(progress: number, length: number = 20): string {
+    const filledLength = Math.round(length * progress);
+    const emptyLength = length - filledLength;
+    
+    const filledPart = '█'.repeat(filledLength);
+    const emptyPart = '░'.repeat(emptyLength);
+    
+    return `[${filledPart}${emptyPart}]`;
   }
 }

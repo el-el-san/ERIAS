@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import logger from '../utils/logger.js';
 import { executeCommand } from '../tools/commandExecutor.js';
-import config from '../config/config.js';
+import { config } from '../config/config.js';
 import { normalizeAbsolutePath } from '../tools/fileSystem.js';
 
 /**

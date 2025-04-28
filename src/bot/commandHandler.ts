@@ -1,351 +1,294 @@
-import { Message, ApplicationCommandData, CommandInteraction, ChatInputCommandInteraction, AttachmentBuilder } from 'discord.js';
-import { AgentCore } from '../agent/agentCore.js';
-import logger from '../utils/logger.js';
-import path from 'path';
-import fs from 'fs';
-
 /**
- * Discordコマンドハンドラ
- * スラッシュコマンドの定義と処理を担当
+ * プラットフォーム共通のコマンドハンドラー
  */
+import { PlatformCommand } from '../platforms/types';
+import { logger } from '../tools/logger';
+import { AgentCore } from '../agent/agentCore';
+
 export class CommandHandler {
   private agentCore: AgentCore;
   
-  /**
-   * CommandHandlerを初期化
-   * @param agentCore AIエージェントコア
-   */
   constructor(agentCore: AgentCore) {
     this.agentCore = agentCore;
   }
-  
-  /**
-   * スラッシュコマンド定義を取得
+/**
+   * Discord用スラッシュコマンド定義を返す
    */
-  public getSlashCommands(): ApplicationCommandData[] {
+  getSlashCommands() {
     return [
       {
         name: 'newproject',
-        description: '新しいプロジェクトを生成します',
+        description: '新しいプロジェクトを生成',
         options: [
           {
-            name: 'specification',
-            description: 'プロジェクトの仕様（詳細な説明）',
+            name: 'spec',
             type: 3, // STRING
+            description: 'プロジェクト仕様',
             required: true,
-          }
-        ]
+          },
+        ],
+      },
+      {
+        name: 'status',
+        description: 'プロジェクト生成の状態を確認',
+        options: [
+          {
+            name: 'taskid',
+            type: 3, // STRING
+            description: 'タスクID',
+            required: true,
+          },
+        ],
+      },
+      {
+        name: 'cancel',
+        description: '実行中のプロジェクト生成をキャンセル',
+        options: [
+          {
+            name: 'taskid',
+            type: 3, // STRING
+            description: 'タスクID',
+            required: true,
+          },
+        ],
+      },
+      {
+        name: 'help',
+        description: 'このヘルプを表示',
+        options: [],
       },
       {
         name: 'githubrepo',
-        description: 'GitHubリポジトリに対してタスクを実行します',
+        description: 'GitHubリポジトリからプロジェクトを生成',
         options: [
           {
-            name: 'repo_url',
-            description: 'GitHubリポジトリのURL',
+            name: 'repo',
             type: 3, // STRING
+            description: 'GitHubリポジトリURL',
             required: true,
           },
           {
             name: 'task',
-            description: '実行するタスクの説明',
             type: 3, // STRING
+            description: '実行するタスク内容',
             required: true,
-          }
-        ]
+          },
+        ],
       },
-      {
-        name: 'status',
-        description: 'プロジェクト生成の状態を確認します',
-        options: [
-          {
-            name: 'task_id',
-            description: 'タスクID',
-            type: 3, // STRING
-            required: true,
-          }
-        ]
-      },
-      {
-        name: 'cancel',
-        description: '実行中のプロジェクト生成をキャンセルします',
-        options: [
-          {
-            name: 'task_id',
-            description: 'タスクID',
-            type: 3, // STRING
-            required: true,
-          }
-        ]
-      },
-      {
-        name: 'help',
-        description: 'ヘルプを表示します',
-      }
     ];
   }
-  
+
   /**
-   * スラッシュコマンドを処理
-   * @param interaction コマンドインタラクション
+   * コマンドを適切なハンドラーに振り分け
    */
-  public async handleSlashCommand(interaction: ChatInputCommandInteraction): Promise<void> {
-    const { commandName } = interaction;
+  async handleCommand(command: PlatformCommand): Promise<void> {
+    logger.info(`Received command: ${command.name} from ${command.user.platformType}`);
     
     try {
-      switch (commandName) {
+      switch (command.name) {
         case 'newproject':
-          await this.handleNewProjectSlashCommand(interaction);
+          await this.handleNewProject(command);
           break;
-          
-        case 'githubrepo':
-          await this.handleGitHubRepoSlashCommand(interaction);
-          break;
-          
         case 'status':
-          await this.handleStatusSlashCommand(interaction);
+          await this.handleStatus(command);
           break;
-          
         case 'cancel':
-          await this.handleCancelSlashCommand(interaction);
+          await this.handleCancel(command);
           break;
-          
         case 'help':
-          await this.handleHelpSlashCommand(interaction);
+          await this.handleHelp(command);
           break;
-          
+        case 'githubrepo':
+          await this.handleGithubRepo(command);
+          break;
         default:
-          await interaction.reply({ content: '不明なコマンドです。', ephemeral: true });
+          await command.respondToCommand({
+            text: `コマンド「${command.name}」は認識されませんでした。'/help'を使用して利用可能なコマンドを確認してください。`
+          });
       }
     } catch (error) {
-      logger.error(`Error handling slash command ${commandName}: ${(error as Error).message}`);
+      logger.error(`Error handling command ${command.name}:`, error);
+      await command.respondToCommand({
+        text: `コマンド実行中にエラーが発生しました：${(error as Error).message}`
+      });
+    }
+  }
+
+  /**
+   * 新規プロジェクト生成コマンドの処理
+   */
+  private async handleNewProject(command: PlatformCommand): Promise<void> {
+    const spec = command.options['spec'] as string;
+    
+    if (!spec) {
+      await command.respondToCommand({
+        text: '`/newproject` コマンドにはプロジェクト仕様を指定する必要があります。例：`/newproject シンプルなToDoリストアプリを作成`'
+      });
+      return;
+    }
+    
+    await command.respondToCommand({
+      text: 'プロジェクト生成リクエストを処理中...'
+    });
+    
+    try {
+      const taskId = await this.agentCore.startNewProject(spec, {
+        userId: command.user.id,
+        platformType: command.user.platformType,
+        channelId: command.channelId
+      });
       
-      // インタラクションがすでに応答済みかどうかをチェック
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp({ 
-          content: `コマンド実行中にエラーが発生しました: ${(error as Error).message}`,
-          ephemeral: true 
+      await command.respondToCommand({
+        text: `プロジェクト作成を開始しました。タスクID：${taskId}\n\n追加の指示やフィードバックは \`task:${taskId} [指示内容]\` の形式で送信できます。`
+      });
+    } catch (error) {
+      logger.error('Failed to start new project:', error);
+      await command.respondToCommand({
+        text: `プロジェクト作成の開始に失敗しました：${(error as Error).message}`
+      });
+    }
+  }
+
+  /**
+   * タスク状態確認コマンドの処理
+   */
+  private async handleStatus(command: PlatformCommand): Promise<void> {
+    const taskId = command.options['taskid'] as string;
+    
+    if (!taskId) {
+      await command.respondToCommand({
+        text: '`/status` コマンドには確認するタスクIDを指定する必要があります。例：`/status abc123`'
+      });
+      return;
+    }
+    
+    try {
+      const status = await this.agentCore.getTaskStatus(taskId);
+      
+      if (!status) {
+        await command.respondToCommand({
+          text: `タスクID：${taskId} が見つかりませんでした。`
+        });
+        return;
+      }
+      
+      await command.respondToCommand({
+        text: `**タスクID：${taskId}**\n状態：${status.state}\n進捗：${Math.round(status.progress * 100)}%\n開始時間：${status.startTime.toLocaleString()}\n${status.description || ''}`
+      });
+    } catch (error) {
+      logger.error(`Failed to get status for task ${taskId}:`, error);
+      await command.respondToCommand({
+        text: `タスク状態の取得に失敗しました：${(error as Error).message}`
+      });
+    }
+  }
+
+  /**
+   * タスクキャンセルコマンドの処理
+   */
+  private async handleCancel(command: PlatformCommand): Promise<void> {
+    const taskId = command.options['taskid'] as string;
+    
+    if (!taskId) {
+      await command.respondToCommand({
+        text: '`/cancel` コマンドにはキャンセルするタスクIDを指定する必要があります。例：`/cancel abc123`'
+      });
+      return;
+    }
+    
+    try {
+      const result = await this.agentCore.cancelTask(taskId, command.user.id);
+      
+      if (result) {
+        await command.respondToCommand({
+          text: `タスクID：${taskId} をキャンセルしました。`
         });
       } else {
-        await interaction.reply({ 
-          content: `コマンド実行中にエラーが発生しました: ${(error as Error).message}`,
-          ephemeral: true 
+        await command.respondToCommand({
+          text: `タスクID：${taskId} のキャンセルに失敗しました。タスクが存在しないか、既に完了している可能性があります。`
         });
       }
-    }
-  }
-  
-  /**
-   * newprojectスラッシュコマンド処理
-   * @param interaction コマンドインタラクション
-   */
-  private async handleNewProjectSlashCommand(interaction: ChatInputCommandInteraction): Promise<void> {
-    // ディファードレスポンスを送信（処理に時間がかかることを通知）
-    await interaction.deferReply();
-    
-    const spec = interaction.options.getString('specification');
-    if (!spec) {
-      await interaction.followUp('プロジェクトの仕様を指定してください。');
-      return;
-    }
-    
-    // タスクを作成
-    const task = this.agentCore.createTask(
-      interaction.user.id,
-      interaction.guild!.id,
-      interaction.channel!.id,
-      spec
-    );
-    
-    // タスクIDを通知
-    await interaction.followUp(
-      `プロジェクト生成を開始しました。\nタスクID: \`${task.id}\`\n\n**仕様**:\n${spec}\n\n_状態: 準備中_`
-    );
-    
-    try {
-      // 非同期でプロジェクト生成を実行
-      this.agentCore.generateProject(task).then(async (zipPath) => {
-        try {
-          if (zipPath) {
-            // ZIPファイルをDiscordに送信
-            logger.info(`Attempting to send ZIP file: ${zipPath}`);
-            
-            const zipFile = new AttachmentBuilder(zipPath, { name: `${path.basename(zipPath)}` });
-            
-            await interaction.followUp({
-              content: `<@${interaction.user.id}> プロジェクト生成が完了しました。`,
-              files: [zipFile]
-            });
-            
-            logger.info(`Successfully sent ZIP file to Discord`);
-            
-            // 一時ファイルを削除
-            setTimeout(() => {
-              try {
-                fs.unlinkSync(zipPath);
-                logger.debug(`Removed temporary zip file: ${zipPath}`);
-              } catch (err) {
-                logger.error(`Failed to remove temporary zip file: ${(err as Error).message}`);
-              }
-            }, 5000);
-          } else {
-            await interaction.followUp(`<@${interaction.user.id}> プロジェクト生成が完了しました。`);
-          }
-        } catch (error) {
-          logger.error(`Failed to send zip file: ${(error as Error).message}`);
-          await interaction.followUp(`<@${interaction.user.id}> ZIPファイルの送信に失敗しました。エラー: ${(error as Error).message}`);
-        }
-      }).catch(async (error) => {
-        logger.error(`Project generation failed: ${error.message}`);
-        // エラーメッセージを送信
-        try {
-          await interaction.followUp(`<@${interaction.user.id}> プロジェクト生成に失敗しました。エラー: ${error.message}`);
-        } catch (followUpError) {
-          logger.error(`Failed to send error followup: ${(followUpError as Error).message}`);
-        }
-      });
     } catch (error) {
-      logger.error(`Failed to start project generation: ${(error as Error).message}`);
-      await interaction.followUp(`プロジェクト生成の開始に失敗しました。エラー: ${(error as Error).message}`);
-    }
-  }
-  
-  /**
-   * statusスラッシュコマンド処理
-   * @param interaction コマンドインタラクション
-   */
-  private async handleStatusSlashCommand(interaction: ChatInputCommandInteraction): Promise<void> {
-    const taskId = interaction.options.getString('task_id');
-    if (!taskId) {
-      await interaction.reply({ content: 'タスクIDを指定してください。', ephemeral: true });
-      return;
-    }
-    
-    const task = this.agentCore.getTask(taskId);
-    if (!task) {
-      await interaction.reply({ content: `タスクID \`${taskId}\` は見つかりませんでした。`, ephemeral: true });
-      return;
-    }
-    
-    const elapsedTime = Math.floor((Date.now() - task.startTime) / 1000);
-    const hours = Math.floor(elapsedTime / 3600);
-    const minutes = Math.floor((elapsedTime % 3600) / 60);
-    const seconds = elapsedTime % 60;
-    
-    let statusEmoji = '🔄';
-    switch (task.status) {
-      case 'pending': statusEmoji = '🕐'; break;
-      case 'planning': statusEmoji = '📖'; break;
-      case 'coding': statusEmoji = '💻'; break;
-      case 'testing': statusEmoji = '⚙️'; break;
-      case 'debugging': statusEmoji = '🔧'; break;
-      case 'completed': statusEmoji = '✅'; break;
-      case 'failed': statusEmoji = '❌'; break;
-      case 'cancelled': statusEmoji = '⛔'; break;
-    }
-    
-    const statusText = `
-**プロジェクト: \`${taskId}\`**
-
-状態: ${statusEmoji} ${task.status}
-開始時間: <t:${Math.floor(task.startTime / 1000)}:R>
-経過時間: ${hours > 0 ? `${hours}時間` : ''}${minutes > 0 ? `${minutes}分` : ''}${seconds}秒
-現在の処理: ${task.currentAction || '不明'}
-`;
-    
-    await interaction.reply(statusText);
-  }
-  
-  /**
-   * cancelスラッシュコマンド処理
-   * @param interaction コマンドインタラクション
-   */
-  private async handleCancelSlashCommand(interaction: ChatInputCommandInteraction): Promise<void> {
-    const taskId = interaction.options.getString('task_id');
-    if (!taskId) {
-      await interaction.reply({ content: 'キャンセルするタスクIDを指定してください。', ephemeral: true });
-      return;
-    }
-    
-    const result = await this.agentCore.cancelTask(taskId);
-    if (result) {
-      await interaction.reply(`タスク \`${taskId}\` をキャンセルしました。`);
-    } else {
-      await interaction.reply({ content: `タスク \`${taskId}\` は見つからないか、すでに完了しています。`, ephemeral: true });
-    }
-  }
-  
-  /**
-   * helpスラッシュコマンド処理
-   * @param interaction コマンドインタラクション
-   */
-  /**
-   * githubrepoスラッシュコマンド処理
-   * @param interaction コマンドインタラクション
-   */
-  private async handleGitHubRepoSlashCommand(interaction: ChatInputCommandInteraction): Promise<void> {
-    // ディファードレスポンスを送信（処理に時間がかかることを通知）
-    await interaction.deferReply();
-    
-    const repoUrl = interaction.options.getString('repo_url');
-    const task = interaction.options.getString('task');
-    
-    if (!repoUrl) {
-      await interaction.followUp('GitHubリポジトリのURLを指定してください。');
-      return;
-    }
-    
-    if (!task) {
-      await interaction.followUp('実行するタスクを指定してください。');
-      return;
-    }
-    
-    const githubTask = this.agentCore.createGitHubTask(
-      interaction.user.id,
-      interaction.guild!.id,
-      interaction.channel!.id,
-      repoUrl,
-      task
-    );
-    
-    // タスクIDを通知
-    await interaction.followUp(
-      `GitHubリポジトリタスクを開始しました。\nタスクID: \`${githubTask.id}\`\n\n**リポジトリ**: ${repoUrl}\n**タスク**: ${task}\n\n_状態: 準備中_`
-    );
-    
-    try {
-      this.agentCore.executeGitHubTask(githubTask).then(async (prUrl) => {
-        await interaction.followUp(`<@${interaction.user.id}> GitHubタスクが完了しました。\nプルリクエスト: ${prUrl}`);
-      }).catch(async (error) => {
-        logger.error(`GitHub task execution failed: ${error.message}`);
-        // エラーメッセージを送信
-        try {
-          await interaction.followUp(`<@${interaction.user.id}> GitHubタスクの実行に失敗しました。エラー: ${error.message}`);
-        } catch (followUpError) {
-          logger.error(`Failed to send error followup: ${(followUpError as Error).message}`);
-        }
+      logger.error(`Failed to cancel task ${taskId}:`, error);
+      await command.respondToCommand({
+        text: `タスクのキャンセルに失敗しました：${(error as Error).message}`
       });
-    } catch (error) {
-      logger.error(`Failed to start GitHub task: ${(error as Error).message}`);
-      await interaction.followUp(`GitHubタスクの開始に失敗しました。エラー: ${(error as Error).message}`);
     }
   }
 
-  private async handleHelpSlashCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+  /**
+   * ヘルプコマンドの処理
+   */
+  private async handleHelp(command: PlatformCommand): Promise<void> {
     const helpText = `
-**Discord AI エージェント - コマンド一覧**
+**ERIASコマンド一覧**
 
-\`/newproject [仕様]\` - 新しいプロジェクトを生成
-\`/githubrepo [repo_url] [task]\` - GitHubリポジトリに対してタスクを実行
-\`/status [タスクID]\` - プロジェクト生成の状態を確認
-\`/cancel [タスクID]\` - 実行中のプロジェクト生成をキャンセル
-\`/help\` - このヘルプを表示
+**基本コマンド**
+\`/newproject [仕様]\` - 新しいプロジェクトを生成します
+\`/status [タスクID]\` - プロジェクトの進捗状況を確認します
+\`/cancel [タスクID]\` - 実行中のプロジェクトをキャンセルします
+\`/help\` - このヘルプメッセージを表示します
 
-**使用例**
-\`/newproject Reactを使用したシンプルなTODOアプリを作成してください。LocalStorageでデータを保存し、タスクの追加、編集、削除、完了のマーキングができるようにしてください。\`
-\`/githubrepo https://github.com/username/repo ログイン機能にGoogle認証を追加してください。\`
+**GitHub連携コマンド**
+\`/githubrepo [リポジトリURL] [タスク]\` - 既存リポジトリに機能を追加します
+
+**フィードバック機能**
+実行中のプロジェクトに対して追加の指示を提供できます：
+\`task:タスクID [指示内容]\`
+
+特殊タグ：
+\`#urgent\` または \`#緊急\` - 緊急の指示として処理します
+\`#feature\` または \`#機能\` - 新機能の追加として処理します
+\`#fix\` または \`#修正\` - バグ修正として処理します
+\`#code\` または \`#コード\` - コード修正として処理します
+\`file:パス\` - 特定ファイルへの指示として処理します
+
+**画像生成機能**
+通常の会話で画像生成をリクエストできます：
+「○○の画像を生成して」
+「○○のイメージを作って」
+"generate image of ..."
+"create an image of ..."
 `;
+
+    await command.respondToCommand({
+      text: helpText
+    });
+  }
+
+  /**
+   * GitHub連携コマンドの処理
+   */
+  private async handleGithubRepo(command: PlatformCommand): Promise<void> {
+    const repoUrl = command.options['repo'] as string;
+    const task = command.options['task'] as string;
     
-    await interaction.reply(helpText);
+    if (!repoUrl || !task) {
+      await command.respondToCommand({
+        text: '`/githubrepo` コマンドにはリポジトリURLとタスク内容の両方を指定する必要があります。\n例：`/githubrepo https://github.com/user/repo ログイン機能を追加`'
+      });
+      return;
+    }
+    
+    await command.respondToCommand({
+      text: 'GitHub連携リクエストを処理中...'
+    });
+    
+    try {
+      const taskId = await this.agentCore.startGitHubTask(repoUrl, task, {
+        userId: command.user.id,
+        platformType: command.user.platformType,
+        channelId: command.channelId
+      });
+      
+      await command.respondToCommand({
+        text: `GitHub連携タスクを開始しました。タスクID：${taskId}\n\n追加の指示やフィードバックは \`task:${taskId} [指示内容]\` の形式で送信できます。`
+      });
+    } catch (error) {
+      logger.error('Failed to start GitHub task:', error);
+      await command.respondToCommand({
+        text: `GitHub連携タスクの開始に失敗しました：${(error as Error).message}`
+      });
+    }
   }
 }

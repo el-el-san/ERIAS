@@ -1,10 +1,10 @@
 import winston from 'winston';
 import fs from 'fs';
 import path from 'path';
-import config from '../config/config.js';
+import { config } from '../config/config.js';
 
 // ログディレクトリを作成
-const logDir = config.logging.dir;
+const logDir = config.LOG_DIR;
 if (!fs.existsSync(logDir)) {
   fs.mkdirSync(logDir, { recursive: true });
 }
@@ -20,7 +20,7 @@ const logFormat = winston.format.combine(
 
 // ロガーを設定
 const logger = winston.createLogger({
-  level: config.logging.level,
+  level: config.LOG_LEVEL,
   format: logFormat,
   transports: [
     // コンソール出力

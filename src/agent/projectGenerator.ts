@@ -4,16 +4,16 @@ import {
   ProjectStatus,
   FileInfo,
   DevelopmentPlan
-} from './types.js';
-import { Planner } from './planner.js';
-import { Coder } from './coder.js';
-import { Tester } from './tester.js';
-import { Debugger } from './debugger.js';
-import { FeedbackHandler } from './feedbackHandler.js';
+} from './types';
+import { Planner } from './planner';
+import { Coder } from './coder';
+import { Tester } from './tester';
+import { Debugger } from './debugger';
+import { FeedbackHandler } from './feedbackHandler';
 import logger from '../utils/logger.js';
 import archiver from 'archiver';
 import { createWriteStream } from 'fs';
-import config from '../config/config.js';
+import { config } from '../config/config.js';
 
 /**
  * プロジェクト生成クラス
@@ -160,7 +160,7 @@ export class ProjectGenerator {
     // テスト失敗時はデバッグフェーズに進む
     if (!testResult.success && task.errors.length > 0) {
       let debugAttempts = 0;
-      const maxDebugRetries = config.agent.maxDebugRetries;
+      const maxDebugRetries = config.MAX_DEBUG_RETRIES;
       
       // 4. デバッグフェーズ
       task.status = ProjectStatus.DEBUGGING;
@@ -245,7 +245,7 @@ export class ProjectGenerator {
         resolve(zipPath);
       });
       
-      archive.on('error', (err) => {
+      archive.on('error', (err: any) => {
         logger.error(`Error archiving project: ${err.message}`);
         reject(err);
       });

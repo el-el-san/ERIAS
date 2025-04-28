@@ -10,6 +10,7 @@ export enum PromptType {
   PLAN = 'plan_prompt',
   CODE = 'code_prompt',
   DEBUG = 'debug_prompt',
+  CONVERSATION = 'conversation_prompt',
 }
 
 /**

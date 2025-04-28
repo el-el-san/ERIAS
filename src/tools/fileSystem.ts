@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import config from '../config/config.js';
+import { config } from '../config/config.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -19,7 +19,7 @@ export function getProjectPath(taskId: string | undefined): string {
   if (!taskId) {
     throw new Error('Task ID is required to get project path');
   }
-  const projectsDir = config.agent.projectsDir;
+  const projectsDir = config.PROJECTS_DIR;
   return path.join(projectsDir, taskId);
 }
 

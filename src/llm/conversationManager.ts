@@ -2,7 +2,7 @@ import { User } from 'discord.js';
 import fs from 'fs';
 import path from 'path';
 import logger from '../utils/logger.js';
-import config from '../config/config.js';
+import { config } from '../config/config.js';
 
 /**
  * 会話メッセージの型定義
@@ -43,10 +43,10 @@ export class ConversationManager {
    */
   constructor() {
     // 設定の読み込み
-    this.maxMessagesPerSession = config.conversation?.maxMessagesPerSession || 10;
-    this.sessionExpiryTimeMs = config.conversation?.sessionExpiryTimeMs || 3600000; // デフォルト1時間
-    this.persistSessions = config.conversation?.persistSessions || false;
-    this.sessionsDir = config.conversation?.sessionsDir || path.join(process.cwd(), 'conversation_history');
+    this.maxMessagesPerSession = config.MAX_MESSAGES_PER_SESSION || 10;
+    this.sessionExpiryTimeMs = config.SESSION_EXPIRY_TIME_MS || 3600000; // デフォルト1時間
+    this.persistSessions = config.PERSIST_SESSIONS || false;
+    this.sessionsDir = config.SESSIONS_DIR || path.join(process.cwd(), 'conversation_history');
     
     // セッション永続化が有効なら、ディレクトリを作成
     if (this.persistSessions) {

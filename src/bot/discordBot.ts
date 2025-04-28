@@ -2,7 +2,7 @@ import { Client, GatewayIntentBits, Message, Events, REST, Routes, AttachmentBui
 import fs from 'fs';
 import path from 'path';
 import logger from '../utils/logger.js';
-import config from '../config/config.js';
+import { config } from '../config/config.js';
 import { conversationManager } from '../llm/conversationManager.js';
 import { GeminiClient } from '../llm/geminiClient.js';
 import { ProjectTask } from '../agent/types.js';
@@ -12,8 +12,39 @@ import { CommandHandler } from './commandHandler.js';
 import {
   handleMessage as extHandleMessage,
   handleCommand as extHandleCommand,
-  handleConversation as extHandleConversation
-} from './discord/handlers.js';
+  handleConversation as extHandleConversation,
+  discordMessageToPlatformMessage
+} from './discord/handlers';
+import { ChatInputCommandInteraction, CacheType } from 'discord.js';
+import { PlatformCommand, PlatformType, PlatformMessage } from '../platforms/types.js';
+
+// Discord Interaction → PlatformCommand変換ラッパー
+function discordInteractionToPlatformCommand(interaction: ChatInputCommandInteraction<CacheType>): PlatformCommand {
+  return {
+    name: interaction.commandName,
+    options: Object.fromEntries(interaction.options.data.map(opt => [opt.name, opt.value])),
+    user: {
+      id: interaction.user.id,
+      name: interaction.user.username,
+      platformId: interaction.user.id,
+      platformType: PlatformType.DISCORD
+    },
+    channelId: interaction.channelId,
+    respondToCommand: async (content) => {
+      await interaction.reply(content.text || ''); // 必要に応じて添付ファイル等も対応
+    },
+    platformType: PlatformType.DISCORD,
+    rawCommand: interaction
+  };
+}
+
+// Discord Message → PlatformMessage型アサーションラッパー
+function asPlatformMessage(msg: unknown): PlatformMessage {
+  // 既にPlatformMessageならそのまま返す
+  if (msg && typeof msg === 'object' && 'platformType' in msg) return msg as PlatformMessage;
+  // discordMessageToPlatformMessageが正しい型を返す前提
+  return discordMessageToPlatformMessage(msg as Message);
+}
 import { startBot, stopBot, setupEventListeners } from './discord/events.js';
 
 /**
@@ -88,7 +119,8 @@ export class DiscordBot {
     
     this.client.on(Events.InteractionCreate, async (interaction) => {
       if (!interaction.isChatInputCommand()) return;
-      await this.commandHandler.handleSlashCommand(interaction);
+      const platformCommand = discordInteractionToPlatformCommand(interaction);
+      await this.commandHandler.handleCommand(platformCommand);
     });
     
     // エラーイベント
@@ -102,30 +134,32 @@ export class DiscordBot {
    * @param message 受信メッセージ
    */
   private async handleMessage(message: Message): Promise<void> {
+    const platformMessage = discordMessageToPlatformMessage(message);
     await extHandleMessage(
       message,
       this.commandPrefix,
       this.feedbackHandler,
-      this.handleCommand.bind(this),
-      this.handleConversation.bind(this)
+      (msg, command, args) => this.handleCommand(asPlatformMessage(msg), command, args),
+      (msg) => this.handleConversation(asPlatformMessage(msg))
     );
   }
 
-  private async handleCommand(message: Message, command?: string, args: string[] = []): Promise<void> {
+  private async handleCommand(message: PlatformMessage, command?: string, args: string[] = []): Promise<void> {
+    // messageはPlatformMessage型で受け取る
     await extHandleCommand(
       message,
       command,
       args,
       this.commandPrefix,
-      this.handleHelpCommand?.bind(this),
-      this.handleNewProjectCommand?.bind(this),
-      this.handleStatusCommand?.bind(this),
-      this.handleCancelCommand?.bind(this),
-      this.handleClearCommand?.bind(this)
+      (msg) => this.handleHelpCommand(this.asDiscordMessage(msg)),
+      (msg, spec) => this.handleNewProjectCommand(this.asDiscordMessage(msg), spec),
+      (msg, taskId) => this.handleStatusCommand(this.asDiscordMessage(msg), taskId),
+      (msg, taskId) => this.handleCancelCommand(this.asDiscordMessage(msg), taskId),
+      (msg) => this.handleClearCommand(this.asDiscordMessage(msg))
     );
   }
 
-  private async handleConversation(message: Message): Promise<void> {
+  private async handleConversation(message: PlatformMessage): Promise<void> {
     await extHandleConversation(message);
   }
   
@@ -141,6 +175,19 @@ export class DiscordBot {
    * 会話履歴クリアコマンド処理
    * @param message メッセージオブジェクト
    */
+  // PlatformMessage→Discord Message変換（型アサーション）
+  private asDiscordMessage(msg: unknown): Message {
+    // Discord.js Message型のプロパティが存在するかで判定
+    if (msg && typeof msg === 'object' && 'reply' in msg && 'author' in msg && 'channel' in msg) {
+      return msg as Message;
+    }
+    // PlatformMessageからrawMessageを取得
+    if (msg && typeof msg === 'object' && 'rawMessage' in msg) {
+      return (msg as { rawMessage: Message }).rawMessage as Message;
+    }
+    throw new Error('Invalid message type for Discord command handler');
+  }
+
   private async handleClearCommand(message: Message): Promise<void> {
     try {
       const result = conversationManager.clearConversationHistory(
@@ -208,60 +255,25 @@ file:パス - 特定ファイルに対する指示（例: \`file:src/App.js\`）
       await message.reply(`プロジェクトの仕様を指定してください。例: \`${this.commandPrefix}new Reactを使ったTODOアプリ\``);
       return;
     }
-    
+
     // 応答メッセージを送信
     const responseMsg = await message.reply('プロジェクト生成リクエストを受け付けました。処理を開始します...');
-    
-    // タスクを作成
-    const task = this.agentCore.createTask(
-      message.author.id,
-      message.guild!.id,
-      message.channel.id,
-      spec
-    );
-    
-    // 進捗メッセージを保存
-    this.progressMessages.set(task.id, responseMsg);
-    
-    // タスクIDを通知
-    await responseMsg.edit(`プロジェクト生成を開始しました。\nタスクID: \`${task.id}\`\n\n**仕様**:\n${spec}\n\n_状態: 準備中_`);
-    
+
     try {
-      // 非同期でプロジェクト生成を実行
-      logger.info(`Starting project generation for task: ${task.id}`);
-      this.agentCore.generateProject(task).then(async (zipPath) => {
-        try {
-          // ZIPファイルをDiscordに送信
-          logger.info(`Attempting to send ZIP file: ${zipPath}`);
-          if (zipPath) {
-            logger.info(`Creating AttachmentBuilder for file: ${zipPath}`);
-            const zipFile = new AttachmentBuilder(zipPath, { name: `${path.basename(zipPath)}` });
-            
-            logger.info(`Sending message with attachment...`);
-            await (message.channel as TextChannel).send({
-              content: `<@${message.author.id}> プロジェクト生成が完了しました。`,
-              files: [zipFile]
-            });
-            logger.info(`Successfully sent ZIP file to Discord`);
-            
-            // 一時ファイルを削除
-            setTimeout(() => {
-              try {
-                fs.unlinkSync(zipPath);
-                logger.debug(`Removed temporary zip file: ${zipPath}`);
-              } catch (err) {
-                logger.error(`Failed to remove temporary zip file: ${(err as Error).message}`);
-              }
-            }, 5000);
-          }
-        } catch (error) {
-          logger.error(`Failed to send zip file: ${(error as Error).message}`);
-          await (message.channel as TextChannel).send(`<@${message.author.id}> ZIPファイルの送信に失敗しました。エラー: ${(error as Error).message}`);
-        }
-      }).catch(async (error) => {
-        logger.error(`Project generation failed: ${error.message}`);
-        await (message.channel as TextChannel).send(`<@${message.author.id}> プロジェクト生成に失敗しました。エラー: ${error.message}`);
+      // AgentCoreのstartNewProjectを呼び出し
+      logger.info(`Starting project generation for spec: ${spec}`);
+      const taskId = await this.agentCore.startNewProject(spec, {
+        userId: message.author.id,
+        channelId: message.channel.id,
+        platformType: PlatformType.DISCORD,
+        // 必要に応じて追加
       });
+
+      // 進捗メッセージを保存
+      this.progressMessages.set(taskId, responseMsg);
+
+      // タスクIDを通知
+      await responseMsg.edit(`プロジェクト生成を開始しました。\nタスクID: \`${taskId}\`\n\n**仕様**:\n${spec}\n\n_状態: 準備中_`);
     } catch (error) {
       logger.error(`Failed to start project generation: ${(error as Error).message}`);
       await responseMsg.edit(`プロジェクト生成の開始に失敗しました。エラー: ${(error as Error).message}`);
@@ -278,24 +290,8 @@ file:パス - 特定ファイルに対する指示（例: \`file:src/App.js\`）
       await message.reply(`タスクIDを指定してください。例: \`${this.commandPrefix}status 1234-5678-90ab-cdef\``);
       return;
     }
-    
-    const task = this.agentCore.getTask(taskId);
-    if (!task) {
-      await message.reply(`タスクID \`${taskId}\` は見つかりませんでした。`);
-      return;
-    }
-    
-    const elapsedTime = Math.floor((Date.now() - task.startTime) / 1000);
-    const statusText = `
-**プロジェクト: \`${taskId}\`**
-
-状態: ${this.getStatusText(task.status)}
-開始時間: <t:${Math.floor(task.startTime / 1000)}:R>
-経過時間: ${this.formatDuration(elapsedTime)}
-現在の処理: ${task.currentAction || '不明'}
-`;
-    
-    await message.reply(statusText);
+    // AgentCoreにgetTaskが存在しないため、現状は未実装
+    await message.reply(`タスクID \`${taskId}\` の状態取得は現在サポートされていません。`);
   }
   
   /**
@@ -308,8 +304,8 @@ file:パス - 特定ファイルに対する指示（例: \`file:src/App.js\`）
       await message.reply(`キャンセルするタスクIDを指定してください。例: \`${this.commandPrefix}cancel 1234-5678-90ab-cdef\``);
       return;
     }
-    
-    const result = await this.agentCore.cancelTask(taskId);
+
+    const result = await this.agentCore.cancelTask(taskId, message.author.id);
     if (result) {
       await message.reply(`タスク \`${taskId}\` をキャンセルしました。`);
     } else {
@@ -400,7 +396,7 @@ file:パス - 特定ファイルに対する指示（例: \`file:src/App.js\`）
     try {
       const commands = this.commandHandler.getSlashCommands();
       
-      const rest = new REST({ version: '10' }).setToken(config.discord.token);
+      const rest = new REST({ version: '10' }).setToken(config.DISCORD_TOKEN);
       
       logger.info('Registering slash commands...');
       

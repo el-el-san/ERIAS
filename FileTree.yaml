@@ -4,7 +4,9 @@ src:
   agent:
     coder:
       addFeatureFromFeedback.ts: 34
-    agentCore.ts: 401
+    services:
+      notificationService.ts: 108
+    agentCore.ts: 310
     coder.ts: 79
     debugger.ts: 411
     feedbackHandler.ts: 238
@@ -15,11 +17,11 @@ src:
     types.ts: 238
   bot:
     discord:
-      events.ts: 75
-      handlers.ts: 164
-    commandHandler.ts: 332
-    discordBot.ts: 370
-    feedbackMessageHandler.ts: 204
+      events.ts: 100
+      handlers.ts: 195
+    commandHandler.ts: 263
+    discordBot.ts: 354
+    feedbackMessageHandler.ts: 160
   coder:
     dependency.ts: 88
     generation.ts: 269
@@ -27,11 +29,12 @@ src:
     regenerateFileStub.ts: 62
     utils.ts: 109
   config:
-    config.ts: 76
+    config.ts: 82
   debugger:
     index.ts: 22
   generators:
     imageGenerator.ts: 148
+    imageRequestDetector.ts: 58
     types.ts: 10
   llm:
     conversationManager.ts: 321
@@ -41,6 +44,13 @@ src:
   planner:
     adjustPlanStub.ts: 60
     index.ts: 85
+  platforms:
+    discord:
+      discordAdapter.ts: 288
+    slack:
+      slackAdapter.ts: 338
+    platformManager.ts: 169
+    types.ts: 64
   services:
     githubService.ts: 253
   tester:
@@ -48,8 +58,11 @@ src:
   tools:
     commandExecutor.ts: 137
     fileSystem.ts: 236
+    logger.ts: 57
+  types:
+    archiver.d.ts: 1
   utils:
     asyncUtils.ts: 82
     jsonUtils.ts: 47
     logger.ts: 45
-  index.ts: 59
+  index.ts: 149

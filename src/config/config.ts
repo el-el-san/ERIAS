@@ -1,88 +1,100 @@
+/**
+ * アプリケーション設定
+ * 環境変数から設定を読み込み
+ */
 import dotenv from 'dotenv';
 import path from 'path';
 
-// .envファイルを読み込む
+// .envファイルを読み込み
 dotenv.config();
 
-// 会話履歴の型定義
-interface ConversationConfig {
-  maxMessagesPerSession: number;
-  sessionExpiryTimeMs: number;
-  persistSessions: boolean;
-  sessionsDir: string;
-}
-
-// 環境変数から設定を読み込み、デフォルト値を設定
-const config = {
-  version: '0.1.0',
+export const config = {
+  // 一般設定
+  APP_NAME: 'ERIAS',
+  APP_VERSION: process.env.npm_package_version || '1.0.0',
+  NODE_ENV: process.env.NODE_ENV || 'development',
   
   // Discord設定
-  discord: {
-    token: process.env.DISCORD_TOKEN || '',
-    clientId: process.env.DISCORD_CLIENT_ID || '',
-    allowedGuildIds: (process.env.ALLOWED_GUILD_IDS || '').split(',').filter(Boolean),
-    allowedUserIds: (process.env.ALLOWED_USER_IDS || '').split(',').filter(Boolean),
-  },
+  DISCORD_TOKEN: process.env.DISCORD_TOKEN || '',
+  DISCORD_CLIENT_ID: process.env.DISCORD_CLIENT_ID || '',
+  ALLOWED_GUILD_IDS: process.env.ALLOWED_GUILD_IDS || '',
+  ALLOWED_USER_IDS: process.env.ALLOWED_USER_IDS || '',
   
-  // LLM API設定
-  llm: {
-    // Google Gemini API
-    google: {
-      apiKey: process.env.GOOGLE_API_KEY || '',
-      defaultModel: process.env.DEFAULT_MODEL || 'gemini-2.5-flash-preview-04-17',
-    },
-    // OpenAI API (オプション)
-    openai: {
-      apiKey: process.env.OPENAI_API_KEY || '',
-      defaultModel: 'gpt-4-turbo',
-    },
-    // Anthropic API (オプション)
-    anthropic: {
-      apiKey: process.env.ANTHROPIC_API_KEY || '',
-      defaultModel: 'claude-3-opus-20240229',
-    },
-  },
+  // Slack設定
+  SLACK_BOT_TOKEN: process.env.SLACK_BOT_TOKEN || '',
+  SLACK_SIGNING_SECRET: process.env.SLACK_SIGNING_SECRET || '',
+  SLACK_APP_TOKEN: process.env.SLACK_APP_TOKEN || '',
+  SLACK_PORT: parseInt(process.env.SLACK_PORT || '3000', 10),
+  SLACK_ALLOWED_CHANNEL_IDS: process.env.SLACK_ALLOWED_CHANNEL_IDS || '',
   
-  // エージェント設定
-  agent: {
-    // 最大実行時間 (ミリ秒)
-    maxExecutionTime: parseInt(process.env.MAX_EXECUTION_TIME || '3600000'),
-    // デバッグリトライ回数
-    maxDebugRetries: parseInt(process.env.MAX_DEBUG_RETRIES || '5'),
-    // 作業ディレクトリパス
-    projectsDir: process.env.PROJECTS_DIR || path.join(process.cwd(), 'projects'),
-    // ERIASのルートディレクトリ
-    eriasRootDir: process.cwd(),
-  },
+  // プラットフォーム有効化設定
+  ENABLE_DISCORD: process.env.ENABLE_DISCORD || 'true',
+  ENABLE_SLACK: process.env.ENABLE_SLACK || 'false',
+  
+  // GitHub設定
+  GITHUB_TOKEN: process.env.GITHUB_TOKEN || '',
+  
+  // Google Gemini API設定
+  GOOGLE_API_KEY: process.env.GOOGLE_API_KEY || '',
+  DEFAULT_MODEL: process.env.DEFAULT_MODEL || 'gemini-2.5-flash-preview-04-17',
+  
+  // タスク実行設定
+  MAX_EXECUTION_TIME: parseInt(process.env.MAX_EXECUTION_TIME || '3600000', 10), // デフォルト1時間
+  MAX_DEBUG_RETRIES: parseInt(process.env.MAX_DEBUG_RETRIES || '5', 10),
+  PROJECTS_DIR: process.env.PROJECTS_DIR || path.join(process.cwd(), 'projects'),
   
   // ログ設定
-  logging: {
-    level: process.env.LOG_LEVEL || 'info',
-    dir: path.join(process.cwd(), 'logs'),
-  },
-  
-  // 会話履歴設定
-  conversation: {
-    // セッションごとの最大メッセージ数
-    maxMessagesPerSession: parseInt(process.env.MAX_MESSAGES_PER_SESSION || '10'),
-    // セッション有効期限 (ミリ秒) - デフォルト3時間
-    sessionExpiryTimeMs: parseInt(process.env.SESSION_EXPIRY_TIME_MS || '10800000'),
-    // セッションを永続化するかどうか
-    persistSessions: process.env.PERSIST_SESSIONS === 'true',
-    // セッション保存ディレクトリ
-    sessionsDir: process.env.SESSIONS_DIR || path.join(process.cwd(), 'conversation_history'),
-  } as ConversationConfig,
+  LOG_LEVEL: process.env.LOG_LEVEL || 'info',
+  LOG_FILE: process.env.LOG_FILE || path.join(process.cwd(), 'logs', 'erias.log'),
+  // ログディレクトリ
+  LOG_DIR: process.env.LOG_DIR || path.dirname(process.env.LOG_FILE || path.join(process.cwd(), 'logs', 'erias.log')),
+
+  // 会話管理設定
+  MAX_MESSAGES_PER_SESSION: parseInt(process.env.MAX_MESSAGES_PER_SESSION || '10', 10),
+  SESSION_EXPIRY_TIME_MS: parseInt(process.env.SESSION_EXPIRY_TIME_MS || '3600000', 10),
+  PERSIST_SESSIONS: process.env.PERSIST_SESSIONS === 'true',
+  SESSIONS_DIR: process.env.SESSIONS_DIR || path.join(process.cwd(), 'conversation_history'),
 };
 
 // 設定の検証
-if (!config.discord.token) {
-  console.error('ERROR: DISCORD_TOKEN is not set in .env file');
-  process.exit(1);
+export function validateConfig(): { isValid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  
+  // 少なくとも1つのプラットフォームが有効化されていることを確認
+  if (config.ENABLE_DISCORD !== 'true' && config.ENABLE_SLACK !== 'true') {
+    errors.push('少なくとも1つのプラットフォーム（DiscordまたはSlack）を有効化する必要があります');
+  }
+  
+  // Discord有効時の必須設定
+  if (config.ENABLE_DISCORD === 'true') {
+    if (!config.DISCORD_TOKEN) {
+      errors.push('Discord有効時はDISCORD_TOKENが必要です');
+    }
+    if (!config.DISCORD_CLIENT_ID) {
+      errors.push('Discord有効時はDISCORD_CLIENT_IDが必要です');
+    }
+  }
+  
+  // Slack有効時の必須設定
+  if (config.ENABLE_SLACK === 'true') {
+    if (!config.SLACK_BOT_TOKEN) {
+      errors.push('Slack有効時はSLACK_BOT_TOKENが必要です');
+    }
+    if (!config.SLACK_SIGNING_SECRET) {
+      errors.push('Slack有効時はSLACK_SIGNING_SECRETが必要です');
+    }
+    if (!config.SLACK_APP_TOKEN) {
+      errors.push('Slack有効時はSLACK_APP_TOKENが必要です');
+    }
+  }
+  
+  // Gemini API設定の確認
+  if (!config.GOOGLE_API_KEY) {
+    errors.push('GOOGLE_API_KEYが必要です');
+  }
+  
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
 }
-
-if (!config.llm.google.apiKey) {
-  console.error('ERROR: GOOGLE_API_KEY is not set in .env file');
-  process.exit(1);
-}
-
-export default config;

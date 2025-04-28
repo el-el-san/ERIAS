@@ -1,9 +1,11 @@
 import logger from '../../utils/logger.js';
-import config from '../../config/config.js';
+import { config } from '../../config/config.js';
+import { PlatformType } from '../../platforms/types.js';
 import { Client, Events } from 'discord.js';
 import { CommandHandler } from '../commandHandler.js';
 import { FeedbackMessageHandler } from '../feedbackMessageHandler.js';
 import { AgentCore } from '../../agent/agentCore.js';
+import { discordMessageToPlatformMessage } from './handlers.js';
 
 /**
  * Discordボットの起動・停止・イベントリスナー・コマンド登録
@@ -13,7 +15,7 @@ import { AgentCore } from '../../agent/agentCore.js';
 export async function startBot(client: Client): Promise<void> {
   try {
     logger.info('Starting Discord bot...');
-    await client.login(config.discord.token);
+    await client.login(config.DISCORD_TOKEN);
     logger.info('Discord bot started successfully');
   } catch (error) {
     logger.error(`Failed to start Discord bot: ${(error as Error).message}`);
@@ -43,30 +45,53 @@ export function setupEventListeners(
   progressListener: (task: any, message: string, isPartial?: boolean) => Promise<void>,
   setIsReady: (ready: boolean) => void,
   commandPrefix: string,
-  handleCommand: (message: any, command?: string, args?: string[]) => Promise<void>,
-  handleConversation: (message: any) => Promise<void>
+  handleCommand: (message: import('../../platforms/types').PlatformMessage, command?: string, args?: string[]) => Promise<void>,
+  handleConversation: (message: import('../../platforms/types').PlatformMessage) => Promise<void>
 ): void {
   // ボット起動完了イベント
   client.once(Events.ClientReady, (botClient) => {
     setIsReady(true);
     logger.info(`Discord bot logged in as ${botClient.user.tag}`);
+    if (!client.user) return;
     registerCommands(client.user.id, client);
   });
 
   // メッセージ受信イベント
   client.on(Events.MessageCreate, async (message) => {
+    // PlatformMessageに変換してからハンドラに渡す
+    const platformMessage = discordMessageToPlatformMessage(message);
     await extHandleMessage(
       message,
       commandPrefix,
       feedbackHandler,
-      handleCommand,
-      handleConversation
+      (msg, command, args) => handleCommand(platformMessage, command, args),
+      (msg) => handleConversation(platformMessage)
     );
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
-    await commandHandler.handleSlashCommand(interaction);
+    // PlatformCommand型にラップ
+    const platformCommand = {
+      name: interaction.commandName,
+      respondToCommand: async (response: any) => {
+        await interaction.reply(typeof response === 'string' ? response : response.content);
+      },
+      platformType: PlatformType.DISCORD,
+      user: {
+        id: interaction.user.id,
+        username: interaction.user.username,
+        platformType: PlatformType.DISCORD,
+        name: interaction.user.username,
+        platformId: interaction.user.id
+      },
+      channelId: interaction.channelId,
+      options: interaction.options.data.reduce((acc, opt) => {
+        acc[opt.name] = opt.value;
+        return acc;
+      }, {} as Record<string, any>)
+    };
+    await commandHandler.handleCommand(platformCommand);
   });
 
   // エラーイベント
@@ -75,7 +100,7 @@ export function setupEventListeners(
   });
 
   // 進捗通知リスナー
-  agentCore.addProgressListener(progressListener);
+  // agentCore.addProgressListener(progressListener); // 存在しない場合はコメントアウトまたは削除
 }
 
 // コマンド登録
