@@ -1,82 +1,247 @@
 /**
- * エージェントコア
- * 開発プロセス全体のオーケストレーション
+ * ERIAS AgentCore
+ * AIエージェントのコアAPI - GitHub連携強化機能を統合
+ * 
+ * @file agentCore.ts
+ * @author ERIAS AI
  */
-import { NotificationTarget } from '../platforms/types';
-import { TaskStatus, FeedbackOptions } from './core/types';
-import { AgentCore as CoreImplementation } from './core/AgentCore';
 
-// シングルトンパターンでAgentCoreを実装
-let instance: AgentCore | null = null;
+import { v4 as uuidv4 } from 'uuid';
+import { AgentCore as CoreImpl } from './core/AgentCore';
+import { TaskManager } from './core/TaskManager';
+import { ProjectExecutor } from './core/ProjectExecutor';
+import { EnhancedGitHubExecutor, GitHubTaskParams, GitHubTaskResult } from './core/EnhancedGitHubExecutor';
+import { NotificationService } from './services/notificationService';
+import { ProjectGenerator } from './projectGenerator';
+import { Planner } from './planner';
+import { Coder } from './coder';
+import { Tester } from './tester';
+import { Debugger } from './debugger';
+import { FeedbackHandler } from './feedbackHandler';
+import { GeminiClient } from '../llm/geminiClient';
+import { PromptBuilder } from '../llm/promptBuilder';
+import { PlatformType, NotificationTarget } from '../platforms/types';
+import { FeedbackOptions } from './core/types';
+import { conversationManager } from '../llm/conversationManager';
+import { ImageGenerator } from '../generators/imageGenerator';
 
-export class AgentCore {
-  private core: CoreImplementation;
+/**
+ * エージェントコアのファサードクラス
+ * 
+ * 外部からのアクセスポイントとして、基本的なAPIを提供します。
+ * 内部的には複数のモジュールに処理を委譲します。
+ */
+class AgentCore {
+  private coreImpl: CoreImpl;
+  private taskManager: TaskManager;
+  private projectExecutor: ProjectExecutor;
+  private enhancedGitHubExecutor: EnhancedGitHubExecutor;
+  private notificationService: NotificationService;
+  private geminiClient: GeminiClient;
+  private promptBuilder: PromptBuilder;
+  private imageGenerator: ImageGenerator;
 
-  private constructor() {
-    this.core = new CoreImplementation();
+  constructor() {
+    // 依存関係の初期化
+    this.taskManager = new TaskManager();
+    this.notificationService = NotificationService.getInstance();
+
+    // LLM依存インスタンス生成
+    this.geminiClient = new GeminiClient();
+    this.promptBuilder = new PromptBuilder();
+    this.imageGenerator = new ImageGenerator();
+
+    // ProjectGenerator用依存インスタンス生成
+    const planner = new Planner(this.geminiClient, this.promptBuilder);
+    const coder = new Coder(this.geminiClient, this.promptBuilder);
+    const tester = new Tester();
+    const debugger_ = new Debugger(this.geminiClient, this.promptBuilder);
+    const feedbackHandler = new FeedbackHandler(planner, coder);
+
+    const projectGenerator = new ProjectGenerator(
+      planner,
+      coder,
+      tester,
+      debugger_,
+      feedbackHandler
+    );
+
+    // 各実行モジュールの初期化
+    this.projectExecutor = new ProjectExecutor(projectGenerator, this.taskManager);
+    this.enhancedGitHubExecutor = new EnhancedGitHubExecutor(this.taskManager, this.notificationService);
+
+    // コア実装の初期化
+    this.coreImpl = new CoreImpl();
   }
 
   /**
-   * シングルトンインスタンスの取得
+   * プロジェクト生成タスクを作成・実行する
    */
-  public static getInstance(): AgentCore {
-    if (!instance) {
-      instance = new AgentCore();
+  public async createProject(
+    spec: string,
+    platformId: string,
+    channelId: string,
+    userId: string,
+    messageId: string
+  ): Promise<string> {
+    // タスクIDを生成
+    const taskId = `project_${uuidv4()}`;
+    
+    // タスクを非同期で実行
+    // NotificationTarget生成
+    const notificationTarget: NotificationTarget = {
+      userId,
+      platformType: platformId === 'slack' ? PlatformType.SLACK : PlatformType.DISCORD, // platformIdを解析して正しいプラットフォームタイプを設定
+      channelId
+    };
+    this.coreImpl.startNewProject(
+      spec,
+      notificationTarget
+    ).catch((error: unknown) => {
+      console.error('Project generation error:', error);
+    });
+    
+    return taskId;
+  }
+
+  /**
+   * GitHub連携タスクを作成・実行する
+   */
+  public async executeGitHubTask(params: GitHubTaskParams): Promise<string> {
+    // タスクIDを生成または使用
+    const taskId = params.taskId || `github_${uuidv4()}`;
+    
+    // タスクを非同期で実行
+    this.enhancedGitHubExecutor.executeGitHubTask({
+      ...params,
+      taskId
+    }).catch((error: unknown) => {
+      console.error('GitHub task execution error:', error);
+    });
+    
+    return taskId;
+  }
+  
+  /**
+   * GitHub連携タスクにフィードバックを提供して修正を実行
+   */
+  public async processGitHubFeedback(
+    taskId: string,
+    feedbackText: string,
+    platformId?: string,
+    channelId?: string,
+    userId?: string,
+    messageId?: string
+  ): Promise<GitHubTaskResult> {
+    return this.enhancedGitHubExecutor.processFeedback(
+      taskId,
+      feedbackText,
+      platformId,
+      channelId,
+      userId,
+      messageId
+    );
+  }
+
+  /**
+   * タスク状態を取得する
+   */
+  public getTaskStatus(taskId: string): any {
+    return this.taskManager.getTaskInfo(taskId);
+  }
+
+  /**
+   * フィードバックをタスクに追加する
+   */
+  public async addFeedbackToTask(
+    taskId: string,
+    feedback: string,
+    platformId: string,
+    channelId: string,
+    userId: string,
+    messageId: string
+  ): Promise<boolean> {
+    return this.coreImpl.processFeedback(
+      taskId,
+      feedback,
+      {
+        userId,
+        platformType: platformId === 'slack' ? PlatformType.SLACK : PlatformType.DISCORD, // platformIdを解析して正しいプラットフォームタイプを設定
+        channelId
+      } as FeedbackOptions,
+      // targetは省略（必要なら追加可）
+    );
+  }
+
+  /**
+   * タスクをキャンセルする
+   */
+  public async cancelTask(taskId: string, userId: string): Promise<boolean> {
+    return await this.taskManager.cancelTask(taskId, userId);
+  }
+
+/**
+   * 会話応答を生成する
+   * @param prompt ユーザーからの入力メッセージ
+   * @param options オプション
+   * @returns 生成された応答
+   */
+  public async generateResponse(prompt: string, options: {
+    userId: string;
+    platformType: PlatformType;
+    channelId: string;
+  }): Promise<string> {
+    try {
+      // NotificationTargetオブジェクトに変換
+      const target: NotificationTarget = {
+        userId: options.userId,
+        platformType: options.platformType,
+        channelId: options.channelId
+      };
+      
+      // 実装済みのAgentCoreクラスのgenerateResponseメソッドを呼び出す
+      const { AgentCore } = require('./core/AgentCore');
+      const agentCoreInstance = new AgentCore();
+      return await agentCoreInstance.generateResponse(prompt, target);
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to generate response: ${error.message}`);
+      }
+      throw new Error('Failed to generate response: Unknown error');
     }
-    return instance;
   }
 
   /**
-   * LLMを使用してユーザーメッセージに応答を生成
+   * 画像を生成する
+   * @param prompt 画像生成プロンプト
+   * @param options オプション
+   * @returns 生成された画像のバッファ
    */
-  async generateResponse(message: string, target: NotificationTarget): Promise<string> {
-    return this.core.generateResponse(message, target);
-  }
-
-  /**
-   * 新規プロジェクト作成の開始
-   */
-  async startNewProject(spec: string, target: NotificationTarget): Promise<string> {
-    return this.core.startNewProject(spec, target);
-  }
-
-  /**
-   * GitHub連携タスクの開始
-   */
-  async startGitHubTask(repoUrl: string, task: string, target: NotificationTarget): Promise<string> {
-    return this.core.startGitHubTask(repoUrl, task, target);
-  }
-
-  /**
-   * 画像生成
-   */
-  async generateImage(prompt: string, target: NotificationTarget): Promise<Buffer | null> {
-    return this.core.generateImage(prompt, target);
-  }
-
-  /**
-   * タスク状態の取得
-   */
-  getTaskStatus(taskId: string): TaskStatus | undefined {
-    return this.core.getTaskStatus(taskId);
-  }
-
-  /**
-   * タスクのキャンセル
-   */
-  async cancelTask(taskId: string, userId: string): Promise<boolean> {
-    return this.core.cancelTask(taskId, userId);
-  }
-
-  /**
-   * タスクへのフィードバック処理
-   */
-  async processFeedback(taskId: string, feedback: string, options: FeedbackOptions): Promise<boolean> {
-    return this.core.processFeedback(taskId, feedback, options);
+  public async generateImage(prompt: string, options: {
+    userId: string;
+    platformType: PlatformType;
+    channelId: string;
+  }): Promise<Buffer | null> {
+    try {
+      // NotificationTargetオブジェクトに変換
+      const target: NotificationTarget = {
+        userId: options.userId,
+        platformType: options.platformType,
+        channelId: options.channelId
+      };
+      
+      // 実装済みのAgentCoreクラスのgenerateImageメソッドを呼び出す
+      const { AgentCore } = require('./core/AgentCore');
+      const agentCoreInstance = new AgentCore();
+      return await agentCoreInstance.generateImage(prompt, target);
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to generate image: ${error.message}`);
+      }
+      throw new Error('Failed to generate image: Unknown error');
+    }
   }
 }
 
-// エクスポートの簡略化のため、インスタンスを提供するヘルパー関数
-export function getAgentCore(): AgentCore {
-  return AgentCore.getInstance();
-}
+// シングルトンインスタンスをエクスポート
+export default new AgentCore();

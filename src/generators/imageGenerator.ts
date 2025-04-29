@@ -1,7 +1,8 @@
 import { writeFile } from 'fs/promises';
 import { AttachmentBuilder } from 'discord.js';
 import logger from '../utils/logger.js';
-import { GoogleGeminiConfig } from './types.js';
+import { GoogleGeminiConfig } from './types';
+import { config } from '../config/config';
 import { GeminiClient } from '../llm/geminiClient.js';
 
 // 動的インポートを使用して利用可能なパッケージを選択
@@ -13,9 +14,15 @@ export class ImageGenerator {
   private initialized: boolean = false;
   private geminiClient: GeminiClient;
 
-  constructor(config: GoogleGeminiConfig) {
+  constructor(aiConfig?: GoogleGeminiConfig) {
+    // 設定が渡されなかった場合はグローバル設定を使用
+    const configToUse = aiConfig || {
+      apiKey: config.GOOGLE_API_KEY,
+      model: config.DEFAULT_MODEL || 'gemini-2.0-flash-exp'
+    };
+    
     // 初期化時に利用可能なパッケージを判断
-    this.initializeAI(config);
+    this.initializeAI(configToUse);
     this.geminiClient = new GeminiClient();
   }
 

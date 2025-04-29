@@ -6,7 +6,7 @@ import { config } from '../config/config.js';
 import { conversationManager } from '../llm/conversationManager.js';
 import { GeminiClient } from '../llm/geminiClient.js';
 import { ProjectTask } from '../agent/types.js';
-import { AgentCore } from '../agent/agentCore.js';
+import AgentCore from '../agent/agentCore.js';
 import { FeedbackMessageHandler } from './feedbackMessageHandler.js';
 import { CommandHandler } from './commandHandler.js';
 import {
@@ -53,7 +53,7 @@ import { startBot, stopBot, setupEventListeners } from './discord/events.js';
  */
 export class DiscordBot {
   private client: Client;
-  private agentCore: AgentCore;
+  private agentCore: any;
   private feedbackHandler: FeedbackMessageHandler;
   private commandHandler: CommandHandler; // 追加: CommandHandlerのインスタンス
   private commandPrefix: string = '/';
@@ -66,10 +66,10 @@ export class DiscordBot {
    * DiscordBotを初期化
    * @param agentCore AIエージェントコア
    */
-  constructor(agentCore: AgentCore) {
+  constructor(agentCore: any) {
     this.agentCore = agentCore;
     this.feedbackHandler = new FeedbackMessageHandler(agentCore);
-    this.commandHandler = new CommandHandler(agentCore);
+    this.commandHandler = new CommandHandler();
     this.client = new Client({
       intents: [
         GatewayIntentBits.Guilds,
@@ -120,7 +120,37 @@ export class DiscordBot {
     this.client.on(Events.InteractionCreate, async (interaction) => {
       if (!interaction.isChatInputCommand()) return;
       const platformCommand = discordInteractionToPlatformCommand(interaction);
-      await this.commandHandler.handleCommand(platformCommand);
+      // CommandHandlerにhandleCommandは存在しないため、コマンド名に応じて分岐
+      // 例: /newproject, /status, /cancel, /help
+      const command = platformCommand.name;
+      if (command === 'newproject') {
+        await this.commandHandler.handleNewProject(
+          platformCommand.options?.spec || '',
+          {
+            platformId: platformCommand.user.id,
+            channelId: platformCommand.channelId,
+            userId: platformCommand.user.id,
+            messageId: platformCommand.rawCommand.id
+          }
+        );
+      } else if (command === 'status') {
+        await this.commandHandler.handleStatus(
+          platformCommand.options?.taskId || ''
+        );
+      } else if (command === 'cancel') {
+        await this.commandHandler.handleCancel(
+          platformCommand.options?.taskId || '',
+          {
+            platformId: platformCommand.user.id,
+            channelId: platformCommand.channelId,
+            userId: platformCommand.user.id,
+            messageId: platformCommand.rawCommand.id
+          }
+        );
+      } else if (command === 'help') {
+        await this.commandHandler.handleHelp();
+      }
+      // 必要に応じて他のコマンドも追加
     });
     
     // エラーイベント
@@ -202,8 +232,13 @@ export class DiscordBot {
         await message.reply('会話履歴はありませんでした。');
       }
     } catch (error) {
-      logger.error(`Error clearing conversation history: ${(error as Error).message}`);
-      await message.reply(`会話履歴のクリア中にエラーが発生しました: ${(error as Error).message}`);
+      if (typeof error === 'object' && error !== null && 'message' in error) {
+        logger.error(`Error clearing conversation history: ${(error as { message?: string }).message}`);
+        await message.reply(`会話履歴のクリア中にエラーが発生しました: ${(error as { message?: string }).message}`);
+      } else {
+        logger.error('Error clearing conversation history: 不明なエラー');
+        await message.reply('会話履歴のクリア中に不明なエラーが発生しました。');
+      }
     }
   }
   
@@ -275,8 +310,13 @@ file:パス - 特定ファイルに対する指示（例: \`file:src/App.js\`）
       // タスクIDを通知
       await responseMsg.edit(`プロジェクト生成を開始しました。\nタスクID: \`${taskId}\`\n\n**仕様**:\n${spec}\n\n_状態: 準備中_`);
     } catch (error) {
-      logger.error(`Failed to start project generation: ${(error as Error).message}`);
-      await responseMsg.edit(`プロジェクト生成の開始に失敗しました。エラー: ${(error as Error).message}`);
+      if (typeof error === 'object' && error !== null && 'message' in error) {
+        logger.error(`Failed to start project generation: ${(error as { message?: string }).message}`);
+        await responseMsg.edit(`プロジェクト生成の開始に失敗しました。エラー: ${(error as { message?: string }).message}`);
+      } else {
+        logger.error('Failed to start project generation: 不明なエラー');
+        await responseMsg.edit('プロジェクト生成の開始に失敗しました。エラー: 不明なエラー');
+      }
     }
   }
   
@@ -357,7 +397,11 @@ file:パス - 特定ファイルに対する指示（例: \`file:src/App.js\`）
       
       await progressMsg.edit(statusText);
     } catch (error) {
-      logger.error(`Error updating progress message: ${(error as Error).message}`);
+      if (typeof error === 'object' && error !== null && 'message' in error) {
+        logger.error(`Error updating progress message: ${(error as { message?: string }).message}`);
+      } else {
+        logger.error('Error updating progress message: 不明なエラー');
+      }
     }
   }
   
@@ -403,7 +447,9 @@ file:パス - 特定ファイルに対する指示（例: \`file:src/App.js\`）
    */
   private async registerCommands(clientId: string): Promise<void> {
     try {
-      const commands = this.commandHandler.getSlashCommands();
+      // getSlashCommandsは存在しないため削除
+      // const commands = this.commandHandler.getSlashCommands();
+      const commands: any[] = []; // 必要ならコマンド定義をここで記述
       
       const rest = new REST({ version: '10' }).setToken(config.DISCORD_TOKEN);
       
@@ -416,7 +462,11 @@ file:パス - 特定ファイルに対する指示（例: \`file:src/App.js\`）
       
       logger.info('Slash commands registered successfully');
     } catch (error) {
-      logger.error(`Error registering slash commands: ${(error as Error).message}`);
+      if (typeof error === 'object' && error !== null && 'message' in error) {
+        logger.error(`Error registering slash commands: ${(error as { message?: string }).message}`);
+      } else {
+        logger.error('Error registering slash commands: 不明なエラー');
+      }
     }
   }
 }

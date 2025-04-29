@@ -4,17 +4,17 @@
  */
 import { PlatformMessage, PlatformType } from '../platforms/types';
 import { PlatformManager } from '../platforms/platformManager';
-import { AgentCore } from '../agent/agentCore';
+import AgentCore from '../agent/agentCore';
 import { logger } from '../tools/logger';
 import { ImageRequestDetector } from '../generators/imageRequestDetector';
 import { ConversationMessage, conversationManager } from '../llm/conversationManager';
 
 export class FeedbackMessageHandler {
-  private agentCore: AgentCore;
+  private agentCore: any;
   private platformManager: PlatformManager;
   private imageRequestDetector: ImageRequestDetector;
   
-  constructor(agentCore: AgentCore) {
+  constructor(agentCore: any) {
     this.agentCore = agentCore;
     this.platformManager = PlatformManager.getInstance();
     this.imageRequestDetector = new ImageRequestDetector();
@@ -42,13 +42,17 @@ export class FeedbackMessageHandler {
       // 通常会話の処理
       await this.handleConversation(message);
     } catch (error) {
-      logger.error('Error handling message:', error);
+      if (typeof error === 'object' && error !== null && 'message' in error) {
+        logger.error('Error handling message:', (error as { message?: string }).message);
+      } else {
+        logger.error('Error handling message: 不明なエラー');
+      }
       
       // エラー応答
       const adapter = this.platformManager.getAdapter(message.platformType);
       if (adapter) {
         await adapter.sendMessage(message.channelId, {
-          text: `メッセージの処理中にエラーが発生しました：${(error as Error).message}`
+          text: `メッセージの処理中にエラーが発生しました：${typeof error === 'object' && error !== null && 'message' in error ? (error as { message?: string }).message : '不明なエラー'}`
         });
       }
     }
@@ -100,17 +104,25 @@ export class FeedbackMessageHandler {
           text: response || `すみません、応答の生成中に問題が発生しました。`
         });
       } catch (error) {
-        logger.error(`LLM応答生成中にエラーが発生しました:`, error);
+        if (typeof error === 'object' && error !== null && 'message' in error) {
+          logger.error(`LLM応答生成中にエラーが発生しました:`, (error as { message?: string }).message);
+        } else {
+          logger.error('LLM応答生成中にエラーが発生しました: 不明なエラー');
+        }
         // エラー詳細をログに記録
         if (error instanceof Error) {
           logger.error(`エラー詳細: ${error.message}\n${error.stack}`);
         }
         await adapter.sendMessage(message.channelId, {
-          text: `すみません、応答の生成中に問題が発生しました: ${(error as Error).message}`
+          text: `すみません、応答の生成中に問題が発生しました: ${typeof error === 'object' && error !== null && 'message' in error ? (error as { message?: string }).message : '不明なエラー'}`
         });
       }
     } catch (error) {
-      logger.error('Error handling conversation:', error);
+      if (typeof error === 'object' && error !== null && 'message' in error) {
+        logger.error('Error handling conversation:', (error as { message?: string }).message);
+      } else {
+        logger.error('Error handling conversation: 不明なエラー');
+      }
       // 全体エラーの詳細をログに記録
       if (error instanceof Error) {
         logger.error(`会話処理エラー詳細: ${error.message}\n${error.stack}`);
@@ -166,12 +178,16 @@ export class FeedbackMessageHandler {
         });
       }
     } catch (error) {
-      logger.error(`Failed to process feedback for task ${taskId}:`, error);
+      if (typeof error === 'object' && error !== null && 'message' in error) {
+        logger.error(`Failed to process feedback for task ${taskId}:`, (error as { message?: string }).message);
+      } else {
+        logger.error(`Failed to process feedback for task ${taskId}: 不明なエラー`);
+      }
       
       const adapter = this.platformManager.getAdapter(message.platformType);
       if (adapter) {
         await adapter.sendMessage(message.channelId, {
-          text: `タスク${taskId}へのフィードバック処理に失敗しました：${(error as Error).message}`
+          text: `タスク${taskId}へのフィードバック処理に失敗しました：${typeof error === 'object' && error !== null && 'message' in error ? (error as { message?: string }).message : '不明なエラー'}`
         });
       }
     }
@@ -186,14 +202,21 @@ export class FeedbackMessageHandler {
       const adapter = this.platformManager.getAdapter(message.platformType);
       if (!adapter) return;
       
+      // より良い画像を生成するためにプロンプトを最適化
+      const optimizedPrompt = this.imageRequestDetector.optimizePrompt(imagePrompt);
+      
+      // デバッグ用に最適化前後のプロンプトをログ出力
+      logger.debug(`オリジナルプロンプト: ${imagePrompt}`);
+      logger.debug(`最適化後プロンプト: ${optimizedPrompt}`);
+      
       const processingMsgId = await adapter.sendMessage(message.channelId, {
         text: `「${imagePrompt}」の画像を生成中です...`
       });
       
-      // 画像生成リクエストをAgentCoreに委譲
-      const imageBuffer = await this.agentCore.generateImage(imagePrompt, {
+      // 画像生成リクエストをAgentCoreに委譲（最適化されたプロンプトを使用）
+      const imageBuffer = await this.agentCore.generateImage(optimizedPrompt, {
         userId: message.author.id,
-        platformType: message.author.platformType,
+        platformType: message.platformType, // author.platformTypeではなくメッセージ自体のプラットフォームタイプを使用
         channelId: message.channelId
       });
       
@@ -210,25 +233,36 @@ export class FeedbackMessageHandler {
         return;
       }
       
+      // 生成元のプロンプトを表示するメッセージを準備
+      const finalMessage = `「${imagePrompt}」の画像を生成しました：`;
+      
       // 生成した画像を送信
       if (processingMsgId) {
         await adapter.updateMessage(message.channelId, processingMsgId, {
-          text: `「${imagePrompt}」の画像を生成しました：`,
+          text: finalMessage,
           images: [imageBuffer]
         });
       } else {
         await adapter.sendMessage(message.channelId, {
-          text: `「${imagePrompt}」の画像を生成しました：`,
+          text: finalMessage,
           images: [imageBuffer]
         });
       }
+      
+      // 成功ログを出力
+      logger.info(`画像生成成功: ${imagePrompt} (${message.author.id} in ${message.channelId})`);
+      
     } catch (error) {
-      logger.error('Failed to generate image:', error);
+      if (typeof error === 'object' && error !== null && 'message' in error) {
+        logger.error('Failed to generate image:', (error as { message?: string }).message);
+      } else {
+        logger.error('Failed to generate image: 不明なエラー');
+      }
       
       const adapter = this.platformManager.getAdapter(message.platformType);
       if (adapter) {
         await adapter.sendMessage(message.channelId, {
-          text: `画像生成中にエラーが発生しました：${(error as Error).message}`
+          text: `画像生成中にエラーが発生しました：${typeof error === 'object' && error !== null && 'message' in error ? (error as { message?: string }).message : '不明なエラー'}`
         });
       }
     }

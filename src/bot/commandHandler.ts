@@ -1,294 +1,409 @@
 /**
- * プラットフォーム共通のコマンドハンドラー
+ * コマンドハンドラー
+ * プラットフォーム共通のコマンド処理を提供
  */
-import { PlatformCommand } from '../platforms/types';
+
+import { v4 as uuidv4 } from 'uuid';
+import agentCore from '../agent/agentCore';
 import { logger } from '../tools/logger';
-import { AgentCore } from '../agent/agentCore';
+
+export interface CommandContext {
+  platformId: string;
+  channelId: string;
+  userId: string;
+  messageId: string;
+}
 
 export class CommandHandler {
-  private agentCore: AgentCore;
-  
-  constructor(agentCore: AgentCore) {
-    this.agentCore = agentCore;
-  }
-/**
-   * Discord用スラッシュコマンド定義を返す
-   */
-  getSlashCommands() {
-    return [
-      {
-        name: 'newproject',
-        description: '新しいプロジェクトを生成',
-        options: [
-          {
-            name: 'spec',
-            type: 3, // STRING
-            description: 'プロジェクト仕様',
-            required: true,
-          },
-        ],
-      },
-      {
-        name: 'status',
-        description: 'プロジェクト生成の状態を確認',
-        options: [
-          {
-            name: 'taskid',
-            type: 3, // STRING
-            description: 'タスクID',
-            required: true,
-          },
-        ],
-      },
-      {
-        name: 'cancel',
-        description: '実行中のプロジェクト生成をキャンセル',
-        options: [
-          {
-            name: 'taskid',
-            type: 3, // STRING
-            description: 'タスクID',
-            required: true,
-          },
-        ],
-      },
-      {
-        name: 'help',
-        description: 'このヘルプを表示',
-        options: [],
-      },
-      {
-        name: 'githubrepo',
-        description: 'GitHubリポジトリからプロジェクトを生成',
-        options: [
-          {
-            name: 'repo',
-            type: 3, // STRING
-            description: 'GitHubリポジトリURL',
-            required: true,
-          },
-          {
-            name: 'task',
-            type: 3, // STRING
-            description: '実行するタスク内容',
-            required: true,
-          },
-        ],
-      },
-    ];
-  }
-
   /**
-   * コマンドを適切なハンドラーに振り分け
+   * プロジェクト生成コマンドを処理
    */
-  async handleCommand(command: PlatformCommand): Promise<void> {
-    logger.info(`Received command: ${command.name} from ${command.user.platformType}`);
-    
+  public async handleNewProject(
+    spec: string,
+    context: CommandContext
+  ): Promise<{ success: boolean; taskId: string; message: string }> {
     try {
-      switch (command.name) {
-        case 'newproject':
-          await this.handleNewProject(command);
-          break;
-        case 'status':
-          await this.handleStatus(command);
-          break;
-        case 'cancel':
-          await this.handleCancel(command);
-          break;
-        case 'help':
-          await this.handleHelp(command);
-          break;
-        case 'githubrepo':
-          await this.handleGithubRepo(command);
-          break;
-        default:
-          await command.respondToCommand({
-            text: `コマンド「${command.name}」は認識されませんでした。'/help'を使用して利用可能なコマンドを確認してください。`
-          });
+      logger.info(`新規プロジェクト作成コマンドを受信: ${spec}`);
+      
+      // プロジェクト生成タスクを開始
+      const taskId = await agentCore.createProject(
+        spec,
+        context.platformId,
+        context.channelId,
+        context.userId,
+        context.messageId
+      );
+      
+      return {
+        success: true,
+        taskId,
+        message: `プロジェクト生成タスクを開始しました。タスクID: ${taskId}`
+      };
+    } catch (error: unknown) {
+      let errorMsg = '不明なエラー';
+      if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string') {
+        errorMsg = (error as any).message;
       }
-    } catch (error) {
-      logger.error(`Error handling command ${command.name}:`, error);
-      await command.respondToCommand({
-        text: `コマンド実行中にエラーが発生しました：${(error as Error).message}`
-      });
+      logger.error(`プロジェクト生成コマンド処理エラー: ${errorMsg}`);
+      return {
+        success: false,
+        taskId: '',
+        message: `エラーが発生しました: ${errorMsg}`
+      };
     }
   }
 
   /**
-   * 新規プロジェクト生成コマンドの処理
+   * ステータス確認コマンドを処理
    */
-  private async handleNewProject(command: PlatformCommand): Promise<void> {
-    const spec = command.options['spec'] as string;
-    
-    if (!spec) {
-      await command.respondToCommand({
-        text: '`/newproject` コマンドにはプロジェクト仕様を指定する必要があります。例：`/newproject シンプルなToDoリストアプリを作成`'
-      });
-      return;
-    }
-    
-    await command.respondToCommand({
-      text: 'プロジェクト生成リクエストを処理中...'
-    });
-    
+  public async handleStatus(
+    taskId: string
+  ): Promise<{ success: boolean; task: any; message: string }> {
     try {
-      const taskId = await this.agentCore.startNewProject(spec, {
-        userId: command.user.id,
-        platformType: command.user.platformType,
-        channelId: command.channelId
-      });
+      logger.info(`ステータス確認コマンドを受信: ${taskId}`);
       
-      await command.respondToCommand({
-        text: `プロジェクト作成を開始しました。タスクID：${taskId}\n\n追加の指示やフィードバックは \`task:${taskId} [指示内容]\` の形式で送信できます。`
-      });
-    } catch (error) {
-      logger.error('Failed to start new project:', error);
-      await command.respondToCommand({
-        text: `プロジェクト作成の開始に失敗しました：${(error as Error).message}`
-      });
-    }
-  }
-
-  /**
-   * タスク状態確認コマンドの処理
-   */
-  private async handleStatus(command: PlatformCommand): Promise<void> {
-    const taskId = command.options['taskid'] as string;
-    
-    if (!taskId) {
-      await command.respondToCommand({
-        text: '`/status` コマンドには確認するタスクIDを指定する必要があります。例：`/status abc123`'
-      });
-      return;
-    }
-    
-    try {
-      const status = await this.agentCore.getTaskStatus(taskId);
+      // タスク状態を取得
+      const task = agentCore.getTaskStatus(taskId);
       
-      if (!status) {
-        await command.respondToCommand({
-          text: `タスクID：${taskId} が見つかりませんでした。`
-        });
-        return;
+      if (!task) {
+        return {
+          success: false,
+          task: null,
+          message: `タスクID ${taskId} が見つかりません`
+        };
       }
       
-      await command.respondToCommand({
-        text: `**タスクID：${taskId}**\n状態：${status.state}\n進捗：${Math.round(status.progress * 100)}%\n開始時間：${status.startTime.toLocaleString()}\n${status.description || ''}`
-      });
-    } catch (error) {
-      logger.error(`Failed to get status for task ${taskId}:`, error);
-      await command.respondToCommand({
-        text: `タスク状態の取得に失敗しました：${(error as Error).message}`
-      });
-    }
-  }
-
-  /**
-   * タスクキャンセルコマンドの処理
-   */
-  private async handleCancel(command: PlatformCommand): Promise<void> {
-    const taskId = command.options['taskid'] as string;
-    
-    if (!taskId) {
-      await command.respondToCommand({
-        text: '`/cancel` コマンドにはキャンセルするタスクIDを指定する必要があります。例：`/cancel abc123`'
-      });
-      return;
-    }
-    
-    try {
-      const result = await this.agentCore.cancelTask(taskId, command.user.id);
-      
-      if (result) {
-        await command.respondToCommand({
-          text: `タスクID：${taskId} をキャンセルしました。`
-        });
-      } else {
-        await command.respondToCommand({
-          text: `タスクID：${taskId} のキャンセルに失敗しました。タスクが存在しないか、既に完了している可能性があります。`
-        });
+      return {
+        success: true,
+        task,
+        message: `タスクID: ${taskId}\nステータス: ${task.status}\n進捗: ${task.progress}%\n説明: ${task.description}`
+      };
+    } catch (error: unknown) {
+      let errorMsg = '不明なエラー';
+      if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string') {
+        errorMsg = (error as any).message;
       }
-    } catch (error) {
-      logger.error(`Failed to cancel task ${taskId}:`, error);
-      await command.respondToCommand({
-        text: `タスクのキャンセルに失敗しました：${(error as Error).message}`
-      });
+      logger.error(`ステータス確認コマンド処理エラー: ${errorMsg}`);
+      return {
+        success: false,
+        task: null,
+        message: `エラーが発生しました: ${errorMsg}`
+      };
     }
   }
 
   /**
-   * ヘルプコマンドの処理
+   * キャンセルコマンドを処理
    */
-  private async handleHelp(command: PlatformCommand): Promise<void> {
-    const helpText = `
-**ERIASコマンド一覧**
+  public async handleCancel(
+    taskId: string,
+    context: CommandContext
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      logger.info(`キャンセルコマンドを受信: ${taskId}`);
+      
+      // タスクをキャンセル
+      const result = await agentCore.cancelTask(taskId, context.userId);
+      
+      if (!result) {
+        return {
+          success: false,
+          message: `タスクID ${taskId} が見つからないか、キャンセルできませんでした`
+        };
+      }
+      
+      return {
+        success: true,
+        message: `タスクID ${taskId} をキャンセルしました`
+      };
+    } catch (error: unknown) {
+      let errorMsg = '不明なエラー';
+      if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string') {
+        errorMsg = (error as any).message;
+      }
+      logger.error(`キャンセルコマンド処理エラー: ${errorMsg}`);
+      return {
+        success: false,
+        message: `エラーが発生しました: ${errorMsg}`
+      };
+    }
+  }
 
-**基本コマンド**
-\`/newproject [仕様]\` - 新しいプロジェクトを生成します
-\`/status [タスクID]\` - プロジェクトの進捗状況を確認します
-\`/cancel [タスクID]\` - 実行中のプロジェクトをキャンセルします
-\`/help\` - このヘルプメッセージを表示します
+  /**
+   * ヘルプコマンドを処理
+   */
+  public async handleHelp(): Promise<{ success: boolean; message: string }> {
+    try {
+      logger.info('ヘルプコマンドを受信');
+      
+      const helpMessage = `# ERIAS コマンドヘルプ
 
-**GitHub連携コマンド**
-\`/githubrepo [リポジトリURL] [タスク]\` - 既存リポジトリに機能を追加します
+## 基本コマンド
+- \`/newproject [仕様]\` - 新しいプロジェクトを生成
+- \`/status [タスクID]\` - プロジェクトの進捗状況を確認
+- \`/cancel [タスクID]\` - 実行中のプロジェクトをキャンセル
+- \`/help\` - このヘルプを表示
 
-**フィードバック機能**
+## GitHub連携コマンド
+- \`/githubrepo [リポジトリURL] [タスク]\` - 既存リポジトリに機能を追加
+- \`/generatefile [リポジトリURL] [ファイルパス] [説明]\` - 特定のファイルを生成
+- \`/reviewpr [リポジトリURL] [PR番号]\` - PRをレビュー
+
+## フィードバック機能
 実行中のプロジェクトに対して追加の指示を提供できます：
-\`task:タスクID [指示内容]\`
+\`\`\`
+task:タスクID [指示内容]
+\`\`\`
 
 特殊タグ：
-\`#urgent\` または \`#緊急\` - 緊急の指示として処理します
-\`#feature\` または \`#機能\` - 新機能の追加として処理します
-\`#fix\` または \`#修正\` - バグ修正として処理します
-\`#code\` または \`#コード\` - コード修正として処理します
-\`file:パス\` - 特定ファイルへの指示として処理します
+- \`#urgent\` または \`#緊急\` - 緊急の指示として処理
+- \`#feature\` または \`#機能\` - 新機能の追加
+- \`#fix\` または \`#修正\` - バグ修正
+- \`#code\` または \`#コード\` - コード修正
+- \`file:パス\` - 特定ファイルへの指示
 
-**画像生成機能**
+## 画像生成機能
 通常の会話で画像生成をリクエストできます：
-「○○の画像を生成して」
-「○○のイメージを作って」
-"generate image of ..."
-"create an image of ..."
-`;
 
-    await command.respondToCommand({
-      text: helpText
-    });
+\`「○○の画像を生成して」\`
+\`「○○のイメージを作って」\`
+\`"generate image of ..."\`
+\`"create an image of ..."\`
+
+ERIASが自動的に生成リクエストを検出し、適切なプロンプトを最適化してGemini 2.0 Flashを使用して画像を出力します。`;
+      
+      return {
+        success: true,
+        message: helpMessage
+      };
+    } catch (error: unknown) {
+      let errorMsg = '不明なエラー';
+      if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string') {
+        errorMsg = (error as any).message;
+      }
+      logger.error(`ヘルプコマンド処理エラー: ${errorMsg}`);
+      return {
+        success: false,
+        message: `エラーが発生しました: ${errorMsg}`
+      };
+    }
   }
 
   /**
-   * GitHub連携コマンドの処理
+   * GitHubリポジトリコマンドを処理
    */
-  private async handleGithubRepo(command: PlatformCommand): Promise<void> {
-    const repoUrl = command.options['repo'] as string;
-    const task = command.options['task'] as string;
-    
-    if (!repoUrl || !task) {
-      await command.respondToCommand({
-        text: '`/githubrepo` コマンドにはリポジトリURLとタスク内容の両方を指定する必要があります。\n例：`/githubrepo https://github.com/user/repo ログイン機能を追加`'
-      });
-      return;
-    }
-    
-    await command.respondToCommand({
-      text: 'GitHub連携リクエストを処理中...'
-    });
-    
+  public async handleGitHubRepo(
+    repoUrl: string,
+    taskDescription: string,
+    context: CommandContext,
+    options: {
+      branchName?: string;
+      baseBranch?: string;
+      createPR?: boolean;
+      reviewPR?: boolean;
+      autoMerge?: boolean;
+    } = {}
+  ): Promise<{ success: boolean; taskId: string; message: string }> {
     try {
-      const taskId = await this.agentCore.startGitHubTask(repoUrl, task, {
-        userId: command.user.id,
-        platformType: command.user.platformType,
-        channelId: command.channelId
+      logger.info(`GitHubリポジトリコマンドを受信: ${repoUrl}, ${taskDescription}`);
+      
+      // GitHub連携タスクを開始
+      const taskId = await agentCore.executeGitHubTask({
+        repoUrl,
+        taskDescription,
+        branchName: options.branchName,
+        baseBranch: options.baseBranch,
+        createPR: options.createPR !== false, // デフォルトtrue
+        reviewPR: options.reviewPR !== false, // デフォルトtrue
+        autoMerge: options.autoMerge || false, // デフォルトfalse
+        platformId: context.platformId,
+        channelId: context.channelId,
+        userId: context.userId,
+        messageId: context.messageId
       });
       
-      await command.respondToCommand({
-        text: `GitHub連携タスクを開始しました。タスクID：${taskId}\n\n追加の指示やフィードバックは \`task:${taskId} [指示内容]\` の形式で送信できます。`
+      return {
+        success: true,
+        taskId,
+        message: `GitHub連携タスクを開始しました。タスクID: ${taskId}`
+      };
+    } catch (error: unknown) {
+      let errorMsg = '不明なエラー';
+      if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string') {
+        errorMsg = (error as any).message;
+      }
+      logger.error(`GitHubリポジトリコマンド処理エラー: ${errorMsg}`);
+      return {
+        success: false,
+        taskId: '',
+        message: `エラーが発生しました: ${errorMsg}`
+      };
+    }
+  }
+
+  /**
+   * タスクフィードバックを処理
+   */
+  public async handleTaskFeedback(
+    taskId: string,
+    feedback: string,
+    context: CommandContext
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      logger.info(`タスクフィードバックを受信: ${taskId}, ${feedback}`);
+      
+      // タスク状態を取得
+      const task = agentCore.getTaskStatus(taskId);
+      
+      if (!task) {
+        return {
+          success: false,
+          message: `タスクID ${taskId} が見つかりません`
+        };
+      }
+      
+      // タスクタイプに応じた処理
+      if (task.type === 'github') {
+        // GitHub連携タスクの場合
+        const result = await agentCore.processGitHubFeedback(
+          taskId,
+          feedback,
+          context.platformId,
+          context.channelId,
+          context.userId,
+          context.messageId
+        );
+        
+        if (result.success) {
+          return {
+            success: true,
+            message: `フィードバックを処理しました: ${result.message}`
+          };
+        } else {
+          return {
+            success: false,
+            message: result.message
+          };
+        }
+      } else {
+        // その他のタスク（プロジェクト生成など）
+        const result = await agentCore.addFeedbackToTask(
+          taskId,
+          feedback,
+          context.platformId,
+          context.channelId,
+          context.userId,
+          context.messageId
+        );
+        
+        return {
+          success: result,
+          message: result
+            ? 'フィードバックをタスクに追加しました'
+            : 'フィードバックの追加に失敗しました'
+        };
+      }
+    } catch (error: unknown) {
+      let errorMsg = '不明なエラー';
+      if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string') {
+        errorMsg = (error as any).message;
+      }
+      logger.error(`タスクフィードバック処理エラー: ${errorMsg}`);
+      return {
+        success: false,
+        message: `エラーが発生しました: ${errorMsg}`
+      };
+    }
+  }
+  
+  /**
+   * GitHub拡張機能のコマンドパターンを処理
+   * ファイル生成、PRレビュー、マージなどを個別に実装
+   */
+  
+  /**
+   * ファイル生成コマンドを処理
+   */
+  public async handleGenerateFile(
+    repoUrl: string,
+    filePath: string,
+    fileDescription: string,
+    context: CommandContext
+  ): Promise<{ success: boolean; taskId: string; message: string }> {
+    try {
+      logger.info(`ファイル生成コマンドを受信: ${repoUrl}, ${filePath}, ${fileDescription}`);
+      
+      // GitHub連携タスクを開始
+      const taskId = await agentCore.executeGitHubTask({
+        repoUrl,
+        taskDescription: `ファイル生成: ${filePath} - ${fileDescription}`,
+        branchName: undefined,
+        baseBranch: undefined,
+        createPR: true,
+        reviewPR: undefined,
+        autoMerge: undefined,
+        platformId: context.platformId,
+        channelId: context.channelId,
+        userId: context.userId,
+        messageId: context.messageId
       });
-    } catch (error) {
-      logger.error('Failed to start GitHub task:', error);
-      await command.respondToCommand({
-        text: `GitHub連携タスクの開始に失敗しました：${(error as Error).message}`
+      
+      return {
+        success: true,
+        taskId,
+        message: `ファイル生成タスクを開始しました。タスクID: ${taskId}\nファイル: ${filePath}`
+      };
+    } catch (error: unknown) {
+      let errorMsg = '不明なエラー';
+      if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string') {
+        errorMsg = (error as any).message;
+      }
+      logger.error(`ファイル生成コマンド処理エラー: ${errorMsg}`);
+      return {
+        success: false,
+        taskId: '',
+        message: `エラーが発生しました: ${errorMsg}`
+      };
+    }
+  }
+  
+  /**
+   * PRレビューコマンドを処理
+   */
+  public async handleReviewPR(
+    repoUrl: string,
+    prNumber: number,
+    context: CommandContext
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      logger.info(`PRレビューコマンドを受信: ${repoUrl}, PR #${prNumber}`);
+      
+      // GitHub連携タスクを開始
+      const taskId = await agentCore.executeGitHubTask({
+        repoUrl,
+        taskDescription: `PR #${prNumber} のレビュー`,
+        createPR: false,
+        reviewPR: true,
+        platformId: context.platformId,
+        channelId: context.channelId,
+        userId: context.userId,
+        messageId: context.messageId
       });
+      
+      return {
+        success: true,
+        message: `PRレビュータスクを開始しました。タスクID: ${taskId}\nPR番号: #${prNumber}`
+      };
+    } catch (error: unknown) {
+      let errorMsg = '不明なエラー';
+      if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string') {
+        errorMsg = (error as any).message;
+      }
+      logger.error(`PRレビューコマンド処理エラー: ${errorMsg}`);
+      return {
+        success: false,
+        message: `エラーが発生しました: ${errorMsg}`
+      };
     }
   }
 }

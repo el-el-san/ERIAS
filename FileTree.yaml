@@ -3,41 +3,41 @@
 src:
   agent:
     coder:
-      addFeatureFromFeedback.ts: 34
+      addFeatureFromFeedback.ts: 35
     core:
-      AgentCore.ts: 149
-      GitHubExecutor.ts: 51
+      AgentCore.ts: 185
+      EnhancedGitHubExecutor.ts: 396
+      GitHubExecutor.ts: 196
       index.ts: 8
       ProjectExecutor.ts: 75
       README.md: 51
       ResponseGenerator.ts: 110
-      TaskManager.ts: 225
+      TaskManager.ts: 288
       types.ts: 30
     services:
       notificationService.ts: 139
     utils:
       index.ts: 3
       progressUtils.ts: 64
-    agentCore.ts: 63
+    agentCore.ts: 211
     coder.ts: 79
-    debugger.ts: 411
-    feedbackHandler.ts: 238
+    debugger.ts: 381
+    feedbackHandler.ts: 222
     githubTaskExecutor.ts: 181
-    planner.ts: 368
-    projectGenerator.ts: 306
-    REFACTORING_NOTES.md: 35
+    planner.ts: 344
+    projectGenerator.ts: 319
     tester.ts: 244
-    types.ts: 189
+    types.ts: 239
   bot:
     discord:
-      events.ts: 100
+      events.ts: 114
       handlers.ts: 195
-    commandHandler.ts: 263
-    discordBot.ts: 354
-    feedbackMessageHandler.ts: 220
+    commandHandler.ts: 367
+    discordBot.ts: 411
+    feedbackMessageHandler.ts: 250
   coder:
     dependency.ts: 88
-    generation.ts: 269
+    generation.ts: 260
     index.ts: 79
     regenerateFileStub.ts: 62
     utils.ts: 109
@@ -46,17 +46,17 @@ src:
   debugger:
     index.ts: 22
   generators:
-    imageGenerator.ts: 148
-    imageRequestDetector.ts: 58
+    imageGenerator.ts: 155
+    imageRequestDetector.ts: 87
     types.ts: 10
   llm:
-    conversationManager.ts: 321
+    conversationManager.ts: 359
     geminiClient.ts: 338
-    promptBuilder.ts: 132
+    promptBuilder.ts: 166
     toolRegistry.ts: 72
   planner:
     adjustPlanStub.ts: 60
-    index.ts: 85
+    index.ts: 83
   platforms:
     discord:
       discordAdapter.ts: 351
@@ -65,7 +65,26 @@ src:
     platformManager.ts: 197
     types.ts: 64
   services:
-    githubService.ts: 253
+    github:
+      modules:
+        FeatureService.ts: 143
+        FileService.ts: 139
+        GitHubServiceBase.ts: 77
+        index.ts: 11
+        PullRequestService.ts: 211
+        RepositoryService.ts: 212
+        types.ts: 37
+      templates:
+        pythonTemplates.ts: 664
+        typescriptTemplates.ts: 611
+      codeAnalyzer.ts: 291
+      codeGenerator.ts: 568
+      enhancedGithubService.ts: 104
+      index.ts: 21
+      languageDetection.ts: 240
+      llmIntegration.ts: 452
+      repositoryAnalyzer.ts: 398
+    githubService.ts: 372
   tester:
     index.ts: 23
   tools:
@@ -79,4 +98,4 @@ src:
     asyncUtils.ts: 82
     jsonUtils.ts: 47
     logger.ts: 45
-  index.ts: 149
+  index.ts: 278

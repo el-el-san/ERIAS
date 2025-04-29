@@ -24,23 +24,23 @@ ERIASは、複数のメッセージングプラットフォーム（Discord、Sl
 
 ### GitHub連携機能の実装状況
 
-**GitHubサービス**では以下の機能が実装されています：
+**GitHubサービス**では以下の機能を実装済みです：
 
-- リポジトリのクローン機能
-- ブランチの作成と管理
-- 変更のコミットとプッシュ
-- プルリクエスト作成機能
-- リポジトリの情報取得とファイル操作
+- **リポジトリ分析**: 詳細なコード構造、依存関係、言語パターンの分析
+- **コード生成エンジン**: 多言語対応（TypeScript, JavaScript, Python）のテンプレートシステム
+- **ブランチ管理**: ブランチの自動作成と管理
+- **PRレビュー機能**: AIによる自動コードレビューとPRコメント生成
+- **フィードバック処理**: ユーザーのフィードバックに基づく機能追加・修正
+- **エンドツーエンド自動化**: リポジトリクローンからプルリクエストマージまでの全自動処理
 
-現在の制限事項：
-- CommonJSとESMの互換性の問題により、@octokit/restはバージョン18.12.0（旧バージョン）を使用
-- コード生成とファイル追加機能は限定的な実装（現状ではREADME更新のみ対応）
-- TypeScriptファイル生成機能など、より複雑なタスクは今後の開発項目
+### 新たに追加された機能
 
-### 開発途上の機能
-
-- **GitHub連携**: 基本的な枠組みは整備されているが、高度なコード生成機能は発展途上
-- **フィードバックによる機能追加**: 基本フレームワークは実装済みだが具体的な解析・適用部分は発展途上
+- **拡張リポジトリ分析器**: 深いコード理解と言語検出機能による高精度分析
+- **言語別コード生成テンプレート**: TypeScriptとPythonに対応した高品質テンプレート
+- **LLM統合**: Gemini APIを活用した高度なコード生成と文脈理解
+- **GitHubフロー自動化**: タスク記述から具体的な実装、PRまでを自動化
+- **コマンドハンドラー拡張**: 新たなGitHub連携コマンドによる操作性向上
+- **モジュール化されたGitHubサービス**: 責任分離による保守性と拡張性の向上
 
 ## システムアーキテクチャ
 
@@ -49,12 +49,10 @@ ERIASは、複数のメッセージングプラットフォーム（Discord、Sl
 - **AgentCore**: 開発プロセス全体のオーケストレーション、タスク管理
 - **PlatformManager**: 各メッセージングプラットフォームのアダプター管理
 - **ProjectGenerator**: プロジェクト生成の全体プロセスを管理
-- **Planner**: プロジェクト計画の立案
-- **Coder**: コード生成、依存関係管理、README生成
-- **Tester**: テストの実行
-- **Debugger**: エラーの検出と修正
-- **FeedbackHandler**: ユーザーフィードバックの処理
-- **GitHubTaskExecutor**: GitHub関連タスクの実行
+- **EnhancedGitHubExecutor**: GitHub関連タスクの高度な実行
+- **RepositoryAnalyzer**: リポジトリの詳細分析
+- **CodeGenerator**: コード生成、依存関係管理
+- **LLMIntegration**: Gemini APIとの高度な連携
 - **ImageGenerator**: Gemini 2.0 Flashによる画像生成機能
 - **PlatformAdapter**: プラットフォーム固有の実装を抽象化
 
@@ -69,13 +67,16 @@ ERIASは、複数のメッセージングプラットフォーム（Discord、Sl
    - 完成プロジェクトのZIPアーカイブ化
 
 2. **GitHub連携**
-   - リポジトリのクローン
-   - 機能実装とコミット
-   - プルリクエストの自動作成
+   - リポジトリの詳細分析（言語、フレームワーク、依存関係）
+   - タスク内容に基づく最適なファイル生成
+   - 様々な言語に対応したコード自動生成
+   - プルリクエストの作成とレビュー
+   - ユーザーフィードバックに基づく機能追加・修正
 
 3. **リアルタイムフィードバック**
    - 開発中の任意のタイミングでフィードバック提供
    - 緊急指示や機能追加のリクエストに対応
+   - GitHub連携タスクへの特殊タグによる指示（#feature, #fix, file:パス）
 
 4. **画像生成**
    - 通常の会話で「〜の画像を生成して」と入力するだけで画像生成
@@ -86,6 +87,19 @@ ERIASは、複数のメッセージングプラットフォーム（Discord、Sl
    - Discord、Slackなど複数のプラットフォームをサポート
    - 抽象化レイヤーによる拡張性の高い設計
    - 将来的に新しいプラットフォームを追加可能
+
+### GitHubサービスの最新アーキテクチャ
+
+GitHub連携機能は以下のモジュールに分割されて実装されています：
+
+- **GitHubServiceBase**: 共通の基底クラスと機能
+- **RepositoryService**: リポジトリとブランチの操作
+- **FileService**: ファイル操作関連の機能
+- **PullRequestService**: PR作成とレビュー機能
+- **FeatureService**: 機能実装関連の機能
+- **EnhancedGitHubService**: 各モジュールを統合したファサードクラス
+
+この構造により、各機能の責任が明確に分離され、保守性と拡張性が向上しています。
 
 ## 使用方法
 
@@ -106,41 +120,7 @@ npm run build
 ### 設定
 
 1. `.env.example`を`.env`にコピー
-2. 以下の環境変数を設定：
-
-```env
-# 一般設定
-NODE_ENV=development
-LOG_LEVEL=info
-LOG_FILE=./logs/erias.log
-
-# Discord設定
-DISCORD_TOKEN=your_discord_bot_token
-DISCORD_CLIENT_ID=your_discord_client_id
-ALLOWED_GUILD_IDS=guild_id1,guild_id2
-ALLOWED_USER_IDS=user_id1,user_id2
-ENABLE_DISCORD=true
-
-# Slack設定
-SLACK_BOT_TOKEN=xoxb-your-slack-bot-token
-SLACK_SIGNING_SECRET=your-slack-signing-secret
-SLACK_APP_TOKEN=xapp-your-slack-app-token
-SLACK_PORT=3000
-SLACK_ALLOWED_CHANNEL_IDS=channel_id1,channel_id2
-ENABLE_SLACK=false
-
-# GitHub設定（オプション）
-GITHUB_TOKEN=your_github_token
-
-# Google Gemini API設定
-GOOGLE_API_KEY=your_google_api_key
-DEFAULT_MODEL=gemini-2.5-flash-preview-04-17
-
-# タスク実行設定
-MAX_EXECUTION_TIME=3600000
-MAX_DEBUG_RETRIES=5
-PROJECTS_DIR=./projects
-```
+2. 必要な環境変数を設定
 
 ### 起動
 
@@ -160,6 +140,8 @@ npm start
 ### GitHub連携コマンド
 
 - `/githubrepo [リポジトリURL] [タスク]` - 既存リポジトリに機能を追加
+- `/generatefile [リポジトリURL] [ファイルパス] [説明]` - 特定のファイルを生成
+- `/reviewpr [リポジトリURL] [PR番号]` - PRをレビュー
 
 ### フィードバック機能
 
@@ -189,176 +171,54 @@ task:タスクID [指示内容]
 
 ERIASが自動的に生成リクエストを検出し、適切なプロンプトを最適化してGemini 2.0 Flashを使用して画像を出力します。
 
-## プロジェクト構造
+## トラブルシューティング
 
-```
-src/
-├── platforms/                # プラットフォーム抽象化レイヤー
-│   ├── types.ts             # 共通インターフェース
-│   ├── platformManager.ts   # プラットフォーム管理
-│   ├── discord/             # Discord実装
-│   │   └── discordAdapter.ts
-│   └── slack/               # Slack実装
-│       └── slackAdapter.ts
-├── agent/                   # AIエージェントのコア機能
-│   ├── agentCore.ts         # ファサードパターンによる外部API
-│   ├── core/                # コアモジュール
-│   │   ├── AgentCore.ts     # メインコアクラス
-│   │   ├── GitHubExecutor.ts # GitHub連携実行
-│   │   ├── ProjectExecutor.ts # プロジェクト実行
-│   │   ├── ResponseGenerator.ts # LLM応答生成
-│   │   ├── TaskManager.ts   # タスク管理
-│   │   ├── types.ts         # コア固有の型定義
-│   │   └── index.ts         # エクスポート
-│   ├── utils/               # ユーティリティ
-│   │   ├── progressUtils.ts # 進捗関連ユーティリティ
-│   │   └── index.ts         # エクスポート
-│   ├── services/            # 各種サービス
-│   │   └── notificationService.ts
-│   ├── planner.ts           # 計画立案
-│   ├── coder.ts             # コード生成
-│   ├── tester.ts            # テスト実行
-│   ├── debugger.ts          # デバッグ
-│   ├── feedbackHandler.ts   # フィードバック処理
-│   ├── githubTaskExecutor.ts # GitHub連携
-│   ├── projectGenerator.ts  # プロジェクト生成
-│   └── types.ts             # 共通型定義
-├── generators/              # 生成機能
-│   ├── imageGenerator.ts    # 画像生成
-│   ├── imageRequestDetector.ts # 画像リクエスト検出
-│   └── types.ts             # 型定義
-├── bot/                     # ボット関連
-│   ├── discord/             # Discord固有の実装
-│   │   ├── events.ts        # Discordイベント
-│   │   └── handlers.ts      # Discordハンドラー
-│   ├── commandHandler.ts    # コマンド処理
-│   ├── discordBot.ts        # Discordボット
-│   └── feedbackMessageHandler.ts # フィードバック処理
-├── llm/                     # LLM（大規模言語モデル）関連
-│   ├── geminiClient.ts      # Gemini API連携
-│   ├── conversationManager.ts # 会話履歴管理
-│   ├── promptBuilder.ts     # プロンプト生成
-│   └── toolRegistry.ts      # ツール登録
-├── coder/                   # コード生成関連
-│   ├── dependency.ts        # 依存関係管理
-│   ├── generation.ts        # コード生成
-│   ├── index.ts             # エクスポート
-│   ├── regenerateFileStub.ts # ファイル再生成
-│   └── utils.ts             # ユーティリティ
-├── planner/                 # 計画立案関連
-│   ├── adjustPlanStub.ts    # 計画調整
-│   └── index.ts             # エクスポート
-├── services/                # 外部サービス連携
-│   └── githubService.ts     # GitHub API操作
-├── tools/                   # ユーティリティツール
-│   ├── commandExecutor.ts   # コマンド実行
-│   ├── fileSystem.ts        # ファイル操作
-│   └── logger.ts            # ログ出力
-├── config/                  # 設定関連
-│   └── config.ts            # 環境設定
-└── index.ts                 # エントリーポイント
-```
+### 既知の問題と解決策
 
-## プロジェクト生成フロー
+- **gitignoreによるコミット失敗**: `.gitignore`ファイルでGitHubリポジトリディレクトリが除外されている場合、`-f`オプションを使ってコミットを強制します。
+- **LLM応答のJSON解析エラー**: Gemini APIからのレスポンスが正しいJSON形式でない場合があります。プロンプトでJSON形式を明示的に要求し、応答の解析ロジックを改善しています。
 
-1. **計画立案フェーズ**
-   - 要件分析と技術スタック選定
-   - プロジェクト構造の設計
-   - 必要なファイルの特定と計画作成
+### エラーハンドリングの改善
 
-2. **フィードバック処理**
-   - ユーザーに計画を提示し、フィードバックを受付
-   - フィードバックを処理して計画を調整
-
-3. **コーディングフェーズ**
-   - 依存関係に基づいたファイル生成順序の決定
-   - 各ファイルのコード生成
-   - 依存関係のインストール
-   - README.mdの自動生成
-
-4. **テストフェーズ**
-   - テスト実行と結果検証
-   - テスト失敗時はデバッグフェーズへ
-
-5. **デバッグフェーズ**（テスト失敗時）
-   - エラーの検出と修正
-   - 再テストの実行（最大試行回数あり）
-
-6. **完了フェーズ**
-   - 最終テストの実行
-   - プロジェクトのZIPアーカイブ化
-   - 完了通知
-
-## AgentCoreのモジュール構造
-
-AgentCoreはリファクタリングにより、より保守性の高いモジュール構造に再設計されています：
-
-- **AgentCore (src/agent/agentCore.ts)**: ファサードパターンを用いた外部公開API
-- **コアモジュール (src/agent/core/)**: 
-  - **AgentCore**: オーケストレーションと統合
-  - **TaskManager**: タスク状態の管理
-  - **ResponseGenerator**: LLM応答生成
-  - **ProjectExecutor**: プロジェクト生成実行
-  - **GitHubExecutor**: GitHub関連タスク実行
-- **ユーティリティ (src/agent/utils/)**: 
-  - **progressUtils**: 進捗表示関連
-
-この構造により、責務の分離が明確になり、テスト容易性や保守性が向上しています。各モジュールは単一責任の原則に従い、特定の機能に集中しています。
-
-## マルチプラットフォーム設計
-
-ERIASは抽象化されたアダプターパターンを採用し、複数のメッセージングプラットフォームに対応できるよう設計されています。
-
-### 主な機能
-
-- **プラットフォーム抽象化**: 共通インターフェースによりプラットフォーム固有のAPIを抽象化
-- **適応型通知システム**: 各プラットフォームに最適化されたメッセージング
-- **統一コマンド処理**: 全プラットフォームで一貫したコマンド体験を提供
-- **拡張性**: 新しいプラットフォームの追加が容易な設計
-
-### サポートプラットフォーム
-
-- **Discord**: Discord.js APIを使用してBotとして実装
-- **Slack**: Slack Bolt APIを使用してAppとして実装
+- エラーログの詳細化と一元管理
+- 復旧メカニズムの強化
+- ユーザーへのエラー通知の改善
 
 ## 開発の次のステップ
 
 現状の実装を踏まえ、今後の開発予定は以下の通りです：
 
-1. **GitHub連携の強化**
-   - リポジトリ分析の精度向上
-   - タスク内容から適切なファイル生成・コード実装機能の強化
-   - TypeScript、JavaScript、Pythonなどの言語に対応した実装パターンの開発
-   - PRレビュー機能の追加
+1. **GitHub連携のさらなる強化**
+   - より多くのプログラミング言語への対応拡充
+   - コード解析・最適化機能の向上
+   - AIによるPRレビュー品質の向上
 
 2. **フィードバックシステムの強化**
-   - 機能追加フィードバックの完全実装
-   - より詳細なコード解析と適用メカニズムの改善
+   - より複雑なフィードバック指示の理解
+   - コンテキスト認識の向上
+   - ユーザーとの自然な対話によるソフトウェア改善
 
 3. **UI/UXの改善**
    - プラットフォーム固有の機能活用
    - インタラクティブな要素の追加
+   - ビジュアルフィードバックの強化
 
 4. **LLM連携の最適化**
    - プロンプトエンジニアリングの強化
-   - より細かなコンテキスト管理
+   - コンテキスト管理の向上
+   - 最新のGeminiモデルへの対応
 
-5. **モジュール構造の更なる改善**
-   - 依存性注入パターンの活用
-   - ユニットテストの追加と拡充
-   - ESM/CommonJS互換性問題の根本解決
-
-6. **GitHub連携周辺の開発項目**
-   - addFeatureFromFeedbackの実装を拡張し、タスク内容に基づく適切なファイル生成を可能にする
-   - 「ハローワールド」やTypeScriptファイル生成などの具体的なケースへの対応
-   - AIを活用したリポジトリ分析と適切なコード生成プロセスの改善
+5. **テスト自動化の強化**
+   - テストカバレッジの向上
+   - 継続的インテグレーション/デプロイメントの導入
+   - 自動的なバグ検出・修正機能
 
 ## 依存ライブラリ
 
 - Discord.js v14.14.1
 - Slack Bolt API v3.14.0
 - Google Genai v0.10.0 / Generative-AI v0.24.0
-- @octokit/rest v18.12.0 (互換性の考慢からESM対応前のバージョンを使用)
+- @octokit/rest v18.12.0
 - Simple-Git v3.27.0
 - その他ユーティリティライブラリ
 

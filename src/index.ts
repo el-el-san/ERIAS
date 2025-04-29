@@ -5,7 +5,7 @@
 import { PlatformManager } from './platforms/platformManager';
 import { CommandHandler } from './bot/commandHandler';
 import { FeedbackMessageHandler } from './bot/feedbackMessageHandler';
-import { AgentCore } from './agent/agentCore';
+import AgentCore from './agent/agentCore';
 import { config, validateConfig } from './config/config';
 import { logger } from './tools/logger';
 import { PlatformCommandDefinition } from './platforms/types';
@@ -34,11 +34,11 @@ async function main() {
     logger.info('ERIASを起動中...');
     
     // エージェントコアの初期化
-    const agentCore = AgentCore.getInstance();
+    const agentCore = AgentCore; // default exportがインスタンスの場合
     
     // コマンドハンドラーとフィードバックハンドラーのセットアップ
-    const commandHandler = new CommandHandler(agentCore);
-    const feedbackMessageHandler = new FeedbackMessageHandler(agentCore);
+    const commandHandler = new CommandHandler();
+    const feedbackMessageHandler = new FeedbackMessageHandler(agentCore as any);
     
     // プラットフォームマネージャーの初期化
     const platformManager = PlatformManager.getInstance();
@@ -48,8 +48,77 @@ async function main() {
       await feedbackMessageHandler.handleMessage(message);
     });
     
-    platformManager.addCommandHandler(async (command) => {
-      await commandHandler.handleCommand(command);
+        platformManager.addCommandHandler(async (command) => {
+      // CommandHandlerにhandleCommandは存在しないため、コマンド名で分岐
+      if (command.name === 'newproject') {
+        const newProjectResult = await commandHandler.handleNewProject(
+          command.options?.spec || '',
+          {
+            platformId: command.platformType,
+            channelId: command.channelId || '',
+            userId: command.user?.id || '',
+            messageId: ''
+          }
+        );
+        await command.respondToCommand({ text: newProjectResult.message });
+      } else if (command.name === 'status') {
+        const statusResult = await commandHandler.handleStatus(
+          command.options?.taskid || ''
+        );
+        await command.respondToCommand({ text: statusResult.message });
+      } else if (command.name === 'cancel') {
+        const cancelResult = await commandHandler.handleCancel(
+          command.options?.taskid || '',
+          {
+            platformId: command.platformType,
+            channelId: command.channelId || '',
+            userId: command.user?.id || '',
+            messageId: ''
+          }
+        );
+        await command.respondToCommand({ text: cancelResult.message });
+      } else if (command.name === 'help') {
+        const helpResult = await commandHandler.handleHelp();
+        await command.respondToCommand({ text: helpResult.message });
+      } else if (command.name === 'githubrepo') {
+        const githubResult = await commandHandler.handleGitHubRepo(
+          command.options?.repo || '',
+          command.options?.task || '',
+          {
+            platformId: command.platformType,
+            channelId: command.channelId || '',
+            userId: command.user?.id || '',
+            messageId: ''
+          }
+        );
+        await command.respondToCommand({ text: githubResult.message });
+      } else if (command.name === 'generatefile') {
+        const generateResult = await commandHandler.handleGenerateFile(
+          command.options?.repo || '',
+          command.options?.path || '',
+          command.options?.desc || '',
+          {
+            platformId: command.platformType,
+            channelId: command.channelId || '',
+            userId: command.user?.id || '',
+            messageId: ''
+          }
+        );
+        await command.respondToCommand({ text: generateResult.message });
+      } else if (command.name === 'reviewpr') {
+        const reviewResult = await commandHandler.handleReviewPR(
+          command.options?.repo || '',
+          parseInt(command.options?.pr || '0'),
+          {
+            platformId: command.platformType,
+            channelId: command.channelId || '',
+            userId: command.user?.id || '',
+            messageId: ''
+          }
+        );
+        await command.respondToCommand({ text: reviewResult.message });
+      }
+      // 必要に応じて他のコマンドも追加
     });
     
     // プラットフォームアダプターの初期化
@@ -115,6 +184,48 @@ async function main() {
             required: true
           }
         ]
+      },
+      {
+        name: 'generatefile',
+        description: '特定のファイルを生成します',
+        options: [
+          {
+            name: 'repo',
+            description: 'リポジトリURL',
+            type: 'string',
+            required: true
+          },
+          {
+            name: 'path',
+            description: 'ファイルパス',
+            type: 'string',
+            required: true
+          },
+          {
+            name: 'desc',
+            description: 'ファイルの説明',
+            type: 'string',
+            required: true
+          }
+        ]
+      },
+      {
+        name: 'reviewpr',
+        description: 'PRをレビューします',
+        options: [
+          {
+            name: 'repo',
+            description: 'リポジトリURL',
+            type: 'string',
+            required: true
+          },
+          {
+            name: 'pr',
+            description: 'PR番号',
+            type: 'string',
+            required: true
+          }
+        ]
       }
     ];
     
@@ -129,16 +240,26 @@ async function main() {
     console.log(`アクティブなプラットフォーム: ${adapters.map(a => a.getAdapterType()).join(', ')}`);
     
   } catch (error) {
-    logger.error('起動中にエラーが発生しました:', error);
-    console.error('起動中にエラーが発生しました:', error);
+    if (typeof error === 'object' && error !== null && 'message' in error) {
+      logger.error('起動中にエラーが発生しました:', (error as { message?: string }).message);
+      console.error('起動中にエラーが発生しました:', (error as { message?: string }).message);
+    } else {
+      logger.error('起動中にエラーが発生しました: 不明なエラー');
+      console.error('起動中にエラーが発生しました: 不明なエラー');
+    }
     process.exit(1);
   }
 }
 
 // アプリケーション起動
 main().catch(error => {
-  logger.error('予期しないエラーが発生しました:', error);
-  console.error('予期しないエラーが発生しました:', error);
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    logger.error('予期しないエラーが発生しました:', (error as { message?: string }).message);
+    console.error('予期しないエラーが発生しました:', (error as { message?: string }).message);
+  } else {
+    logger.error('予期しないエラーが発生しました: 不明なエラー');
+    console.error('予期しないエラーが発生しました: 不明なエラー');
+  }
   process.exit(1);
 });
 
@@ -156,12 +277,22 @@ process.on('SIGTERM', () => {
 });
 
 process.on('uncaughtException', (error) => {
-  logger.error('未処理の例外が発生しました:', error);
-  console.error('未処理の例外が発生しました:', error);
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    logger.error('未処理の例外が発生しました:', (error as { message?: string }).message);
+    console.error('未処理の例外が発生しました:', (error as { message?: string }).message);
+  } else {
+    logger.error('未処理の例外が発生しました: 不明なエラー');
+    console.error('未処理の例外が発生しました: 不明なエラー');
+  }
   process.exit(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  logger.error('未処理のPromise拒否が発生しました:', reason);
-  console.error('未処理のPromise拒否が発生しました:', reason);
+  if (typeof reason === 'object' && reason !== null && 'message' in reason) {
+    logger.error('未処理のPromise拒否が発生しました:', (reason as { message?: string }).message);
+    console.error('未処理のPromise拒否が発生しました:', (reason as { message?: string }).message);
+  } else {
+    logger.error('未処理のPromise拒否が発生しました: 不明な理由');
+    console.error('未処理のPromise拒否が発生しました: 不明な理由');
+  }
 });

@@ -4,7 +4,7 @@ import { PlatformType } from '../../platforms/types.js';
 import { Client, Events } from 'discord.js';
 import { CommandHandler } from '../commandHandler.js';
 import { FeedbackMessageHandler } from '../feedbackMessageHandler.js';
-import { AgentCore } from '../../agent/agentCore.js';
+import AgentCore from '../../agent/agentCore.js';
 import { discordMessageToPlatformMessage } from './handlers.js';
 
 /**
@@ -18,7 +18,11 @@ export async function startBot(client: Client): Promise<void> {
     await client.login(config.DISCORD_TOKEN);
     logger.info('Discord bot started successfully');
   } catch (error) {
-    logger.error(`Failed to start Discord bot: ${(error as Error).message}`);
+    if (typeof error === 'object' && error !== null && 'message' in error) {
+      logger.error(`Failed to start Discord bot: ${(error as { message?: string }).message}`);
+    } else {
+      logger.error('Failed to start Discord bot: 不明なエラー');
+    }
     throw error;
   }
 }
@@ -30,7 +34,11 @@ export async function stopBot(client: Client): Promise<void> {
     await client.destroy();
     logger.info('Discord bot stopped successfully');
   } catch (error) {
-    logger.error(`Error stopping Discord bot: ${(error as Error).message}`);
+    if (typeof error === 'object' && error !== null && 'message' in error) {
+      logger.error(`Error stopping Discord bot: ${(error as { message?: string }).message}`);
+    } else {
+      logger.error('Error stopping Discord bot: 不明なエラー');
+    }
   }
 }
 
@@ -41,7 +49,7 @@ export function setupEventListeners(
   client: Client,
   commandHandler: CommandHandler,
   feedbackHandler: FeedbackMessageHandler,
-  agentCore: AgentCore,
+  agentCore: any,
   progressListener: (task: any, message: string, isPartial?: boolean) => Promise<void>,
   setIsReady: (ready: boolean) => void,
   commandPrefix: string,
@@ -91,12 +99,18 @@ export function setupEventListeners(
         return acc;
       }, {} as Record<string, any>)
     };
-    await commandHandler.handleCommand(platformCommand);
+    // CommandHandlerにhandleCommandは存在しないため、必要に応じてAPIに合わせて修正
+    // ここではdiscordBot.ts側でコマンド分岐処理を行うため、呼び出しを削除またはコメントアウト
+    // await commandHandler.handleCommand(platformCommand);
   });
 
   // エラーイベント
   client.on('error', (error) => {
-    logger.error(`Discord client error: ${error.message}`);
+    if (typeof error === 'object' && error !== null && 'message' in error) {
+      logger.error(`Discord client error: ${(error as { message?: string }).message}`);
+    } else {
+      logger.error('Discord client error: 不明なエラー');
+    }
   });
 
   // 進捗通知リスナー

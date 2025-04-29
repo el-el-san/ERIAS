@@ -68,45 +68,99 @@ export class ConversationManager {
   }
   
   /**
+   * 新しい会話を作成
+   * @param conversationId 会話ID
+   * @returns 作成された会話セッション
+   */
+  public createConversation(conversationId: string): ConversationSession {
+    // 会話IDからユーザーIDとチャンネルIDを生成
+    const userId = conversationId;
+    const channelId = conversationId;
+    const guildId = 'default';
+    
+    // セッションの取得または作成
+    return this.getOrCreateSession(userId, channelId, guildId);
+  }
+
+  /**
    * 会話にメッセージを追加
-   * @param userId ユーザーID
-   * @param channelId チャンネルID
-   * @param guildId ギルドID
-   * @param content メッセージ内容
-   * @param isAssistant AIアシスタントからのメッセージかどうか
+   * @param userIdOrConversationId ユーザーIDまたは会話ID
+   * @param channelOrRole チャンネルIDまたはロール
+   * @param guildIdOrContent ギルドIDまたはコンテンツ
+   * @param content コンテンツ (オプション)
+   * @param isAssistant アシスタントからのメッセージかどうか (オプション)
    * @returns 更新された会話セッション
    */
-  public addMessage(
-    userId: string,
-    channelId: string,
-    guildId: string,
-    content: string,
-    isAssistant: boolean
-  ): ConversationSession {
-    // ユーザーの会話セッションを取得または作成
-    const session = this.getOrCreateSession(userId, channelId, guildId);
+  public addMessage(userIdOrConversationId: string, channelOrRole: string | 'user' | 'assistant', 
+                   guildIdOrContent: string, content?: string, isAssistant?: boolean): ConversationSession {
     
-    // メッセージを追加
-    session.messages.push({
-      role: isAssistant ? 'assistant' : 'user',
-      content,
-      timestamp: Date.now()
-    });
-    
-    // 最大メッセージ数を超えたら古いメッセージを削除
-    if (session.messages.length > this.maxMessagesPerSession) {
-      session.messages = session.messages.slice(-this.maxMessagesPerSession);
+    // 引数の数に基づいて呼び出し方法を判断
+    if (content !== undefined && isAssistant !== undefined) {
+      // 5引数バージョン（従来の呼び出し）
+      const userId = userIdOrConversationId;
+      const channelId = channelOrRole as string;
+      const guildId = guildIdOrContent;
+      
+      // ユーザーの会話セッションを取得または作成
+      const session = this.getOrCreateSession(userId, channelId, guildId);
+      
+      // メッセージを追加
+      session.messages.push({
+        role: isAssistant ? 'assistant' : 'user',
+        content,
+        timestamp: Date.now()
+      });
+      
+      // 最大メッセージ数を超えたら古いメッセージを削除
+      if (session.messages.length > this.maxMessagesPerSession) {
+        session.messages = session.messages.slice(-this.maxMessagesPerSession);
+      }
+      
+      // 最終アクティビティ時間を更新
+      session.lastActivity = Date.now();
+      
+      // セッションを保存
+      if (this.persistSessions) {
+        this.saveSession(session);
+      }
+      
+      return session;
+    } else {
+      // 3引数バージョン（新しい呼び出し）
+      const conversationId = userIdOrConversationId;
+      const role = channelOrRole as 'user' | 'assistant';
+      const messageContent = guildIdOrContent;
+
+      // 会話IDからユーザーIDとチャンネルIDを生成
+      const userId = conversationId;
+      const channelId = conversationId;
+      const guildId = 'default';
+      
+      // ユーザーの会話セッションを取得または作成
+      const session = this.getOrCreateSession(userId, channelId, guildId);
+      
+      // メッセージを追加
+      session.messages.push({
+        role: role,
+        content: messageContent,
+        timestamp: Date.now()
+      });
+      
+      // 最大メッセージ数を超えたら古いメッセージを削除
+      if (session.messages.length > this.maxMessagesPerSession) {
+        session.messages = session.messages.slice(-this.maxMessagesPerSession);
+      }
+      
+      // 最終アクティビティ時間を更新
+      session.lastActivity = Date.now();
+      
+      // セッションを保存
+      if (this.persistSessions) {
+        this.saveSession(session);
+      }
+      
+      return session;
     }
-    
-    // 最終アクティビティ時間を更新
-    session.lastActivity = Date.now();
-    
-    // セッションを保存
-    if (this.persistSessions) {
-      this.saveSession(session);
-    }
-    
-    return session;
   }
   
   /**

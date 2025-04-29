@@ -18,12 +18,16 @@ export class ImageRequestDetector {
         // 日本語パターン
         /(?:(.+?)の(?:画像|イメージ)を(?:生成|作成|作って))/i,
         /(?:(?:画像|イメージ)を(?:生成|作成|作って)(?:ください)?(?:.*?)：(.*?)(?:$|\.|。))/i,
+        /(?:(?:画像|イメージ)を(?:生成|作成|作って)(?:ください)?(?:.*?)「(.*?)」)/i,
+        /(?:「(.*?)」の(?:画像|イメージ)を(?:生成|作成|作って))/i,
         
         // 英語パターン
         /(?:generate(?:\s+an)?(?:\s+image)?\s+of\s+(.+?)(?:$|\.|。))/i,
         /(?:create(?:\s+an)?(?:\s+image)?\s+of\s+(.+?)(?:$|\.|。))/i,
         /(?:make(?:\s+an)?(?:\s+image)?\s+of\s+(.+?)(?:$|\.|。))/i,
-        /(?:(?:an\s+)?image\s+of\s+(.+?)(?:$|\.|。))/i
+        /(?:(?:an\s+)?image\s+of\s+(.+?)(?:$|\.|。))/i,
+        /(?:draw(?:\s+me)?(?:\s+an)?(?:\s+image)?\s+of\s+(.+?)(?:$|\.|。))/i,
+        /(?:show(?:\s+me)?(?:\s+an)?(?:\s+image)?\s+of\s+(.+?)(?:$|\.|。))/i
       ];
       
       for (const pattern of patterns) {
@@ -53,7 +57,32 @@ export class ImageRequestDetector {
     
     // 詳細な説明が少ない場合は、高品質化のための指示を追加
     if (rawPrompt.split(' ').length < 5) {
-      optimizedPrompt += ', high quality, detailed';
+      optimizedPrompt += ', high quality, detailed, high resolution, photorealistic';
+    }
+    
+    // 日本語のプロンプトの場合、英語への翻訳も考慮
+    if (/[\u3000-\u30ff\u4e00-\u9fff\uff00-\uffef\u3040-\u309f]/.test(optimizedPrompt)) {
+      // 日本語文字が含まれている場合、日本語版の追加パラメータを付加
+      if (!optimizedPrompt.includes('高品質') && 
+          !optimizedPrompt.includes('詳細') && 
+          !optimizedPrompt.includes('高解像度')) {
+        optimizedPrompt += ', 高品質, 詳細, 高解像度, 写実的';
+      }
+    }
+    
+    // スタイルキーワードが含まれていない場合、デフォルトのスタイルを追加
+    const styleKeywords = [
+      'photorealistic', 'anime', 'cartoon', 'sketch', 'painting', '3d', 'digital art',
+      '写実的', 'アニメ', '漫画', 'スケッチ', '絵画', 'デジタルアート'
+    ];
+    
+    const hasStyleKeyword = styleKeywords.some(keyword => 
+      optimizedPrompt.toLowerCase().includes(keyword.toLowerCase())
+    );
+    
+    if (!hasStyleKeyword) {
+      // デフォルトで高品質なデジタルアートスタイルを追加
+      optimizedPrompt += ', digital art style, vivid colors, intricate details';
     }
     
     return optimizedPrompt;

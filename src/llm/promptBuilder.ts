@@ -11,6 +11,7 @@ export enum PromptType {
   CODE = 'code_prompt',
   DEBUG = 'debug_prompt',
   CONVERSATION = 'conversation_prompt',
+  IMAGE = 'image_prompt',
 }
 
 /**
@@ -158,5 +159,48 @@ export class PromptBuilder {
       stackTrace,
       testCode,
     });
+  }
+
+  /**
+   * 会話システムプロンプトを生成
+   * @param variables 埋め込む変数
+   */
+  public buildConversationSystemPrompt(variables: Record<string, string> = {}): string {
+    // テンプレートが存在するかチェック
+    if (this.templates.has(PromptType.CONVERSATION)) {
+      return this.build(PromptType.CONVERSATION, variables);
+    }
+    
+    // デフォルトの会話システムプロンプトを返す
+    return `あなたはERIASというDiscordとSlackで動作するAIアシスタントです。ユーザーの式に一責した応答を行い、可能な限り役立つ情報を提供してください。
+
+主な機能は以下の通りです：
+1. 自動プロジェクト生成 (/newproject コマンド)
+2. GitHub連携タスク実行 (/githubrepo コマンド)
+3. 一般的な質問応答
+4. 画像生成 (「この画像を生成して」タイプのリクエスト)
+
+応答は子供でも読めるようなフレンドリーなトーンで、专門的な語句は遺して簡潔に説明してください。大事な情報は皆が理解しやすいように整理して提供し、長いテキストは適切に段落分けしてください。`;
+  }
+
+  /**
+   * 画像生成用プロンプトを最適化
+   * @param basePrompt 基本の画像生成プロンプト
+   * @returns 最適化されたプロンプト
+   */
+  public async optimizeImagePrompt(basePrompt: string): Promise<string> {
+    // 画像生成プロンプト用のテンプレートがある場合
+    if (this.templates.has(PromptType.IMAGE)) {
+      try {
+        // プロンプト生成サービスを使用する過程をスキップ
+        // 実際の実装ではここでLLMを使用してプロンプトを最適化する
+        return `${basePrompt}, high quality, detailed, 4k resolution, vibrant colors, realistic`;
+      } catch (error) {
+        logger.error(`Error optimizing image prompt: ${(error as Error).message}`);
+      }
+    }
+    
+    // 最終手段として、ベースプロンプトに基本的な最適化を追加
+    return `${basePrompt}, high quality, detailed, 4k resolution, vibrant colors, realistic`;
   }
 }
