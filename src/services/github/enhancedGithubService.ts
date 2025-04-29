@@ -35,6 +35,9 @@ export class EnhancedGitHubService {
     await this.fileService.initRepository(owner, repo);
     await this.pullRequestService.initRepository(owner, repo);
     
+    // FeatureServiceの初期化も必要
+    await this.featureService.initRepository(owner, repo);
+    
     return repoPath;
   }
 

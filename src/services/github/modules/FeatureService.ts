@@ -1,6 +1,6 @@
-/**
- * 機能実装関連の機能
- */
+  /**
+  * 機能実装関連の機能
+  */
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -16,6 +16,22 @@ export class FeatureService extends GitHubServiceBase {
   constructor(repoService: RepositoryService) {
     super();
     this.repoService = repoService;
+  }
+  
+  /**
+   * リポジトリ情報を初期化
+   */
+  public async initRepository(owner: string, repo: string): Promise<void> {
+    this.owner = owner;
+    this.repo = repo;
+    
+    // リポジトリサービスのリポジトリアナライザを共有
+    if (this.repoService && (this.repoService as any)['repositoryAnalyzer']) {
+      this.repositoryAnalyzer = (this.repoService as any)['repositoryAnalyzer'];
+      logger.info(`FeatureService: リポジトリ初期化 ${owner}/${repo}`);
+    } else {
+      logger.warn(`FeatureService: リポジトリサービスが初期化されていません`);
+    }
   }
 
   /**

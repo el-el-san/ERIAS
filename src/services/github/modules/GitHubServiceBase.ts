@@ -38,11 +38,25 @@ export class GitHubServiceBase {
       fs.mkdirSync(this.workDir, { recursive: true });
     }
     
+    // デフォルトのSimpleGitインスタンス
     this.git = simpleGit({
       baseDir: this.workDir,
       binary: 'git',
       maxConcurrentProcesses: 1
     });
+    
+    // GitHubのアカウント設定を確認
+    try {
+      // Gitのグローバル設定をログ出力してデバッグ
+      logger.info(`Git設定確認中: WorkDir=${this.workDir}, Token長=${options.token?.length || config.GITHUB_TOKEN?.length || 0}文字`);
+      
+      // Octokitが正しく初期化されたか確認
+      if (!options.token && !config.GITHUB_TOKEN) {
+        logger.warn('GitHubトークンが設定されていません。認証が必要な操作は失敗する可能性があります。');
+      }
+    } catch (error) {
+      logger.error(`Git設定確認中にエラーが発生: ${this.getErrorMessage(error)}`);
+    }
     
     this.llmIntegration = new LLMIntegration();
   }

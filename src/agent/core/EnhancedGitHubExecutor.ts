@@ -128,7 +128,15 @@ export class EnhancedGitHubExecutor {
         const prResult = await this.githubService.createPullRequest(
           `${params.taskDescription}`,
           branchName,
-          baseBranch
+          baseBranch,
+          `## 概要
+${params.taskDescription}
+
+## 変更内容
+- ${implementationResult.files?.join('\n- ') || 'ファイルなし'}
+
+## 実行者
+ERIAS-Agent`
         );
         
         result.prUrl = prResult.url;

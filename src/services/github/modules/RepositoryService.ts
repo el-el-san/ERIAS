@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { simpleGit } from 'simple-git';
 import { logger } from '../../../tools/logger';
+import { config } from '../../../config/config';
 import { RepositoryAnalyzer } from '../repositoryAnalyzer';
 import { GitHubServiceBase } from './GitHubServiceBase';
 import { ChangedFile } from './types';
@@ -20,11 +21,9 @@ export class RepositoryService extends GitHubServiceBase {
       this.repo = repo;
       
       const repoUrl = `https://github.com/${owner}/${repo}.git`;
-      const repoPath = path.join(this.workDir, `${owner}_${repo}`);
+      let repoPath = path.join(this.workDir, `${owner}_${repo}`);
       
-      logger.info(`リポジトリクローン開始: ${repoUrl} -> ${repoPath}`);
-      
-      // すでにクローンされている場合は更新
+      // すでにクローンされている場合は処理
       if (fs.existsSync(repoPath)) {
         // .git ディレクトリが存在するか確認
         if (fs.existsSync(path.join(repoPath, '.git'))) {
@@ -37,16 +36,36 @@ export class RepositoryService extends GitHubServiceBase {
           logger.info(`リポジトリを最新に更新しました: ${repoPath}`);
           return repoPath;
         } else {
-          // .git ディレクトリがない場合はディレクトリを削除して再クローン
-          fs.rmSync(repoPath, { recursive: true, force: true });
+          // .git ディレクトリがない場合は常に新しいディレクトリを使用
+          const timestamp = new Date().getTime();
+          repoPath = path.join(this.workDir, `${owner}_${repo}_${timestamp}`);
+          logger.info(`既存ディレクトリには.gitがありません。タイムスタンプ付きの新しいパスを使用します: ${repoPath}`);
         }
       }
+      
+      logger.info(`リポジトリクローン開始: ${repoUrl} -> ${repoPath}`);
       
       // ディレクトリ作成
       fs.mkdirSync(repoPath, { recursive: true });
       
       // リポジトリをクローン
-      await this.git.clone(repoUrl, repoPath);
+      const cloneOptions = ['--config', 'user.name=ERIAS-Agent', '--config', 'user.email=erias-agent@example.com'];
+      await this.git.clone(repoUrl, repoPath, cloneOptions);
+      
+      // クローン後の初期設定
+      const repoGit = simpleGit({
+        baseDir: repoPath,
+        binary: 'git',
+        maxConcurrentProcesses: 1
+      });
+      
+      // ユーザー名とメールアドレスを設定
+      await repoGit.addConfig('user.name', 'ERIAS-Agent', false, 'local');
+      await repoGit.addConfig('user.email', 'erias-agent@example.com', false, 'local');
+      
+      // リモートURLを確認
+      const remotes = await repoGit.getRemotes(true);
+      logger.info(`リモート一覧: ${JSON.stringify(remotes)}`);
       
       logger.info(`リポジトリクローン完了: ${repoPath}`);
       
@@ -71,31 +90,37 @@ export class RepositoryService extends GitHubServiceBase {
       }
       
       const repoPath = (this.repositoryAnalyzer as any)['repoPath'];
-      const repoGit = simpleGit(repoPath);
       
-      logger.info(`ブランチ作成開始: ${branchName} (from ${fromBranch})`);
+      logger.info(`ブランチ作成開始: ${branchName} (from ${fromBranch}) (パス: ${repoPath})`);
+      
+      // 特定ディレクトリ内でgit操作を行うラッパー関数を作成
+      const gitInDirectory = simpleGit({
+        baseDir: repoPath,
+        binary: 'git',
+        maxConcurrentProcesses: 1
+      });
       
       // 現在のブランチを取得
-      const currentBranch = await repoGit.branch();
+      const currentBranch = await gitInDirectory.branch();
       
       // fromBranchに切り替える
       if (currentBranch.current !== fromBranch) {
-        await repoGit.checkout([fromBranch]);
+        await gitInDirectory.checkout([fromBranch]);
       }
       
       // リモートから最新を取得
-      await repoGit.pull(['origin', fromBranch]);
+      await gitInDirectory.pull(['origin', fromBranch]);
       
       // 既存ブランチの一覧を取得
-      const branches = await repoGit.branch();
+      const branches = await gitInDirectory.branch();
       const branchExists = branches.all.includes(branchName);
       
       if (branchExists) {
         logger.info(`ブランチ '${branchName}' はすでに存在します。既存ブランチを使用します。`);
-        await repoGit.checkout([branchName]);
+        await gitInDirectory.checkout([branchName]);
       } else {
         // 新しいブランチを作成
-        await repoGit.checkoutBranch(branchName, fromBranch);
+        await gitInDirectory.checkoutBranch(branchName, fromBranch);
         logger.info(`ブランチ '${branchName}' を作成しました。`);
       }
     } catch (error: unknown) {
@@ -115,17 +140,23 @@ export class RepositoryService extends GitHubServiceBase {
       }
       
       const repoPath = (this.repositoryAnalyzer as any)['repoPath'];
-      const repoGit = simpleGit(repoPath);
       
-      logger.info(`変更をコミット: ${message}`);
+      logger.info(`変更をコミット: ${message} (パス: ${repoPath})`);
+      
+      // 特定ディレクトリ内でgit操作を行うラッパー関数を作成
+      const gitInDirectory = simpleGit({
+        baseDir: repoPath,
+        binary: 'git',
+        maxConcurrentProcesses: 1
+      });
       
       // ファイルを追加 (-f オプションで.gitignoreを無視する)
-      await repoGit.add(['-f', ...files]);
+      await gitInDirectory.add(['-f', ...files]);
       
       // コミット
-      await repoGit.commit(message);
+      await gitInDirectory.commit(message);
       
-      logger.info(`コミット完了: ${message}`);
+      logger.info(`コミット完了: ${message} (パス: ${repoPath})`);
     } catch (error: unknown) {
       const errorMsg = this.getErrorMessage(error);
       logger.error(`コミット中にエラーが発生: ${errorMsg}`);
@@ -151,12 +182,38 @@ export class RepositoryService extends GitHubServiceBase {
         branch = currentBranch.current;
       }
       
-      logger.info(`変更をプッシュ: ${branch}`);
+      logger.info(`変更をプッシュ: ${branch} (パス: ${repoPath})`);
       
-      // 変更をプッシュ
-      await repoGit.push('origin', branch);
+      // ディレクトリ内でgit操作を行うラッパー関数を作成
+      const gitInDirectory = simpleGit({
+        baseDir: repoPath,
+        binary: 'git',
+        maxConcurrentProcesses: 1
+      });
       
-      logger.info(`プッシュ完了: ${branch}`);
+      // リモート情報を確認
+      const remotes = await gitInDirectory.getRemotes(true);
+      logger.info(`リモート一覧: ${JSON.stringify(remotes)}`);
+      
+      // 認証情報を確認
+      try {
+        const githubUrl = `https://${config.GITHUB_TOKEN}@github.com/${this.owner}/${this.repo}.git`;
+        await gitInDirectory.addRemote('authenticated', githubUrl);
+        
+        // 認証付きリモートにプッシュ
+        logger.info(`認証付きリモートにプッシュ: authenticated ${branch}`);
+        await gitInDirectory.push('authenticated', branch, ['--set-upstream', '--force']);
+        
+        // 一時的な認証リモートを削除
+        await gitInDirectory.removeRemote('authenticated');
+      } catch (authError) {
+        logger.warn(`認証付きプッシュに失敗しました: ${this.getErrorMessage(authError)}。標準プッシュを試みます。`);
+        
+        // 通常の方法でプッシュを試みる
+        await gitInDirectory.push('origin', branch, ['--set-upstream', '--force']);
+      }
+      
+      logger.info(`プッシュ完了: ${branch} (パス: ${repoPath})`);
     } catch (error: unknown) {
       const errorMsg = this.getErrorMessage(error);
       logger.error(`プッシュ中にエラーが発生: ${errorMsg}`);

@@ -58,6 +58,19 @@ export class PullRequestService extends GitHubServiceBase {
       }
       
       // プルリクエスト作成
+      logger.info(`詳細PRを作成: owner=${this.owner}, repo=${this.repo}, head=${headBranch}, base=${baseBranch}`);
+      
+      // GitHubのアクセストークンが正しく設定されているか確認
+      const user = await this.octokit.users.getAuthenticated();
+      logger.info(`認証済みユーザー: ${user.data.login}`);
+      
+      // リポジトリが存在するか確認
+      const repo = await this.octokit.repos.get({
+        owner: this.owner,
+        repo: this.repo
+      });
+      
+      // PR作成時には単純なブランチ名を指定
       const pr = await this.octokit.pulls.create({
         owner: this.owner,
         repo: this.repo,
