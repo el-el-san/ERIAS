@@ -1,6 +1,4 @@
-// 動的インポートのために型だけ先に宣言
-type OctokitType = any;
-let OctokitModule: { Octokit: OctokitType };
+import { Octokit } from '@octokit/rest';
 import { simpleGit, SimpleGit } from 'simple-git';
 import path from 'path';
 import fs from 'fs/promises';
@@ -14,7 +12,7 @@ import { normalizeAbsolutePath } from '../tools/fileSystem.js';
  * GitHubリポジトリの操作を担当
  */
 export class GitHubService {
-  private octokit: OctokitType;
+  private octokit: Octokit;
   private repoMap: Map<string, string> = new Map(); // プロジェクトパス -> リポジトリURLのマッピング
   
   /**
@@ -22,41 +20,11 @@ export class GitHubService {
    * @param token GitHubトークン（オプション）
    */
   constructor(token?: string) {
-    // コンストラクタでは初期化だけ行い、実際のOctokitインスタンス作成は後で行う
-    this.octokit = null as any;
-    this.token = token || process.env.GITHUB_TOKEN;
+    this.octokit = new Octokit({
+      auth: token || process.env.GITHUB_TOKEN
+    });
   }
-  
-  // トークンを保存するプロパティ
-  private token?: string;
 
-  /**
-   * Octokitの初期化
-   * @param token GitHubトークン
-   */
-  private async initOctokit(): Promise<void> {
-    try {
-      // 既に初期化されていれば処理をスキップ
-      if (this.octokit && typeof this.octokit !== 'undefined' && this.octokit !== null) {
-        return;
-      }
-      
-      // 動的インポート
-      if (!OctokitModule) {
-        OctokitModule = await import('octokit');
-      }
-      
-      this.octokit = new OctokitModule.Octokit({
-        auth: this.token
-      });
-      
-      logger.info('Octokitの初期化が成功しました');
-    } catch (error) {
-      logger.error(`Octokitの初期化に失敗しました: ${(error as Error).message}`);
-      throw error;
-    }
-  }
-  
   /**
    * リポジトリURLからオーナーとリポジトリ名を抽出
    * @param repoUrl リポジトリURL
@@ -254,17 +222,12 @@ export class GitHubService {
     logger.info(`プルリクエストを作成中: ${title}`);
     
     try {
-      // Octokitが初期化されていることを確認
-      if (!this.octokit) {
-        await this.initOctokit();
-      }
-      
       // GitHub APIの認証を確認
       if (!this.octokit.auth) {
         throw new Error('GitHubトークンが設定されていません。GITHUB_TOKEN環境変数を設定してください。');
       }
       
-      const { data } = await this.octokit.rest.pulls.create({
+      const { data } = await this.octokit.pulls.create({
         owner,
         repo,
         title,
@@ -301,12 +264,7 @@ export class GitHubService {
    */
   public async getDefaultBranch(owner: string, repo: string): Promise<string> {
     try {
-      // Octokitが初期化されていることを確認
-      if (!this.octokit) {
-        await this.initOctokit();
-      }
-      
-      const { data } = await this.octokit.rest.repos.get({
+      const { data } = await this.octokit.repos.get({
         owner,
         repo
       });
@@ -408,12 +366,7 @@ export class GitHubService {
    */
   public async getFileContent(owner: string, repo: string, path: string, ref?: string): Promise<string> {
     try {
-      // Octokitが初期化されていることを確認
-      if (!this.octokit) {
-        await this.initOctokit();
-      }
-      
-      const { data } = await this.octokit.rest.repos.getContent({
+      const { data } = await this.octokit.repos.getContent({
         owner,
         repo,
         path,
@@ -446,12 +399,7 @@ export class GitHubService {
    */
   public async getRepositoryInfo(owner: string, repo: string): Promise<any> {
     try {
-      // Octokitが初期化されていることを確認
-      if (!this.octokit) {
-        await this.initOctokit();
-      }
-      
-      const { data } = await this.octokit.rest.repos.get({
+      const { data } = await this.octokit.repos.get({
         owner,
         repo
       });
