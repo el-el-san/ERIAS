@@ -29,7 +29,7 @@ export class GitHubServiceBase {
       auth: options.token || config.GITHUB_TOKEN
     });
     
-    this.workDir = options.workDir || path.join(config.PROJECTS_DIR, 'github_repos');
+    this.workDir = path.resolve(options.workDir || path.join(config.PROJECTS_DIR, 'github_repos'));
     this.owner = options.owner || '';
     this.repo = options.repo || '';
     
@@ -70,6 +70,40 @@ export class GitHubServiceBase {
     this.owner = owner;
     this.repo = repo;
     logger.info(`GitHubServiceBase: リポジトリ情報を設定 ${owner}/${repo}`);
+  }
+
+  /**
+   * リモートURLが正しいかどうかを確認し、必要に応じて修正する
+   * @param gitInstance Git操作のためのSimpleGitインスタンス
+   * @param expectedUrl 期待されるURL
+   */
+  protected async verifyAndFixRemoteUrl(gitInstance: SimpleGit, expectedUrl: string): Promise<boolean> {
+    try {
+      // リモート情報を取得
+      const remotes = await gitInstance.getRemotes(true);
+      const originRemote = remotes.find(r => r.name === 'origin');
+      
+      // リモートURLが期待と異なる場合は更新
+      if (!originRemote || originRemote.refs.fetch !== expectedUrl) {
+        logger.info(`リモートURLが正しくないため更新します: 現在=${originRemote?.refs.fetch || 'なし'}, 期待=${expectedUrl}`);
+        
+        // 既存のoriginを削除して正しいURLで再設定
+        if (originRemote) {
+          await gitInstance.removeRemote('origin');
+        }
+        await gitInstance.addRemote('origin', expectedUrl);
+        
+        // 更新後のリモート情報を再確認
+        const updatedRemotes = await gitInstance.getRemotes(true);
+        logger.info(`更新後のリモート一覧: ${JSON.stringify(updatedRemotes)}`);
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      logger.error(`リモートURL確認中にエラーが発生: ${this.getErrorMessage(error)}`);
+      return false;
+    }
   }
 
   /**

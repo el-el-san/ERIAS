@@ -12,6 +12,9 @@ import { GitHubServiceBase } from './GitHubServiceBase';
 import { ChangedFile } from './types';
 
 export class RepositoryService extends GitHubServiceBase {
+  // 追加：生成・修正したファイルのみを追跡するためのセット
+  private modifiedFiles: Set<string> = new Set();
+
   /**
    * リポジトリをクローンし、必要な初期化を行う
    */
@@ -30,10 +33,54 @@ export class RepositoryService extends GitHubServiceBase {
           logger.info(`リポジトリはすでに存在します。最新に更新します: ${repoPath}`);
           
           const repoGit = simpleGit(repoPath);
-          await repoGit.fetch(['--all']);
-          await repoGit.reset(['--hard', 'origin/main']);
           
-          logger.info(`リポジトリを最新に更新しました: ${repoPath}`);
+          // リモートURLが正しいか確認し、必要なら更新
+          const remotes = await repoGit.getRemotes(true);
+          const originRemote = remotes.find(r => r.name === 'origin');
+          
+          if (!originRemote || originRemote.refs.fetch !== repoUrl) {
+            logger.info(`リモートURLを更新します: ${repoUrl}`);
+            // 既存のoriginを削除して正しいURLで再設定
+            if (originRemote) {
+              await repoGit.removeRemote('origin');
+            }
+            await repoGit.addRemote('origin', repoUrl);
+          }
+          
+          await repoGit.fetch(['--all']);
+          
+          // リモートリポジトリの状態を確認
+          try {
+            // リモートのmainブランチがあるか確認
+            const branches = await repoGit.branch(['-r']);
+            if (branches.all.includes('origin/main') || branches.all.includes('origin/master')) {
+              // 既存のブランチがある場合は、そのブランチから作業を始める
+              const defaultBranch = branches.all.includes('origin/main') ? 'main' : 'master';
+              await repoGit.checkout([defaultBranch]);
+              await repoGit.reset(['--hard', `origin/${defaultBranch}`]);
+              logger.info(`リポジトリを${defaultBranch}ブランチの最新状態に更新しました: ${repoPath}`);
+            } else {
+              // リモートにブランチがない場合（空リポジトリの場合）
+              logger.info(`リモートリポジトリに既存のブランチが見つかりません。新しいリポジトリとして初期化します。`);
+              // 初期状態としてREADMEを作成
+              const readmePath = path.join(repoPath, 'README.md');
+              fs.writeFileSync(readmePath, `# ${repo}\n\nInitial repository setup\n`);
+              await repoGit.add(['README.md']);
+              await repoGit.commit('Initial commit');
+              // mainブランチを作成
+              await repoGit.checkoutLocalBranch('main');
+            }
+          } catch (branchError) {
+            logger.warn(`ブランチ情報取得エラー: ${this.getErrorMessage(branchError)}, 新しいリポジトリとして初期化します。`);
+            // 初期状態としてREADMEを作成
+            const readmePath = path.join(repoPath, 'README.md');
+            fs.writeFileSync(readmePath, `# ${repo}\n\nInitial repository setup\n`);
+            await repoGit.add(['README.md']);
+            await repoGit.commit('Initial commit');
+            // mainブランチを作成
+            await repoGit.checkoutLocalBranch('main');
+          }
+          
           return repoPath;
         } else {
           // .git ディレクトリがない場合は常に新しいディレクトリを使用
@@ -48,24 +95,99 @@ export class RepositoryService extends GitHubServiceBase {
       // ディレクトリ作成
       fs.mkdirSync(repoPath, { recursive: true });
       
-      // リポジトリをクローン
-      const cloneOptions = ['--config', 'user.name=ERIAS-Agent', '--config', 'user.email=erias-agent@example.com'];
-      await this.git.clone(repoUrl, repoPath, cloneOptions);
-      
-      // クローン後の初期設定
-      const repoGit = simpleGit({
-        baseDir: repoPath,
-        binary: 'git',
-        maxConcurrentProcesses: 1
-      });
-      
-      // ユーザー名とメールアドレスを設定
-      await repoGit.addConfig('user.name', 'ERIAS-Agent', false, 'local');
-      await repoGit.addConfig('user.email', 'erias-agent@example.com', false, 'local');
-      
-      // リモートURLを確認
-      const remotes = await repoGit.getRemotes(true);
-      logger.info(`リモート一覧: ${JSON.stringify(remotes)}`);
+      try {
+        // リポジトリをクローン
+        const cloneOptions = ['--config', 'user.name=ERIAS-Agent', '--config', 'user.email=erias-agent@example.com'];
+        await this.git.clone(repoUrl, repoPath, cloneOptions);
+        
+        // クローン後の初期設定
+        const repoGit = simpleGit({
+          baseDir: repoPath,
+          binary: 'git',
+          maxConcurrentProcesses: 1
+        });
+        
+        // ユーザー名とメールアドレスを設定
+        await repoGit.addConfig('user.name', 'ERIAS-Agent', false, 'local');
+        await repoGit.addConfig('user.email', 'erias-agent@example.com', false, 'local');
+        
+        // リモートURLを確認と修正
+        const remotes = await repoGit.getRemotes(true);
+        logger.info(`リモート一覧: ${JSON.stringify(remotes)}`);
+        
+        // リモートURLが正しいか確認し、必要なら更新
+        const originRemote = remotes.find(r => r.name === 'origin');
+        if (!originRemote || originRemote.refs.fetch !== repoUrl) {
+          logger.info(`リモートURLが正しくないため更新します: ${repoUrl}`);
+          // 既存のoriginを削除して正しいURLで再設定
+          if (originRemote) {
+            await repoGit.removeRemote('origin');
+          }
+          await repoGit.addRemote('origin', repoUrl);
+          
+          // 更新後のリモート情報を再確認
+          const updatedRemotes = await repoGit.getRemotes(true);
+          logger.info(`更新後のリモート一覧: ${JSON.stringify(updatedRemotes)}`);
+        }
+        
+        // リモートリポジトリの状態を確認
+        try {
+          // リモートのmainブランチがあるか確認
+          const branches = await repoGit.branch(['-r']);
+          if (branches.all.includes('origin/main') || branches.all.includes('origin/master')) {
+            // 既存のブランチがある場合は、そのブランチから作業を始める
+            const defaultBranch = branches.all.includes('origin/main') ? 'main' : 'master';
+            await repoGit.checkout([defaultBranch]);
+            logger.info(`リポジトリを${defaultBranch}ブランチで初期化しました: ${repoPath}`);
+          } else {
+            // リモートにブランチがない場合（空リポジトリの場合）
+            logger.info(`リモートリポジトリに既存のブランチが見つかりません。新しいリポジトリとして初期化します。`);
+            // 初期状態としてREADMEを作成
+            const readmePath = path.join(repoPath, 'README.md');
+            fs.writeFileSync(readmePath, `# ${repo}\n\nInitial repository setup\n`);
+            await repoGit.add(['README.md']);
+            await repoGit.commit('Initial commit');
+            // mainブランチを作成
+            await repoGit.checkoutLocalBranch('main');
+          }
+        } catch (branchError) {
+          logger.warn(`ブランチ情報取得エラー: ${this.getErrorMessage(branchError)}, 新しいリポジトリとして初期化します。`);
+          // 初期状態としてREADMEを作成
+          const readmePath = path.join(repoPath, 'README.md');
+          fs.writeFileSync(readmePath, `# ${repo}\n\nInitial repository setup\n`);
+          await repoGit.add(['README.md']);
+          await repoGit.commit('Initial commit');
+          // mainブランチを作成
+          await repoGit.checkoutLocalBranch('main');
+        }
+        
+      } catch (cloneError) {
+        // クローンに失敗した場合（リポジトリが空の場合など）
+        logger.warn(`クローンに失敗しました: ${this.getErrorMessage(cloneError)}, 新しいリポジトリとして初期化します。`);
+        
+        // Gitリポジトリを初期化
+        const repoGit = simpleGit({
+          baseDir: repoPath,
+          binary: 'git',
+          maxConcurrentProcesses: 1
+        });
+        
+        await repoGit.init();
+        await repoGit.addConfig('user.name', 'ERIAS-Agent', false, 'local');
+        await repoGit.addConfig('user.email', 'erias-agent@example.com', false, 'local');
+        
+        // リモートURLを設定
+        await repoGit.addRemote('origin', repoUrl);
+        
+        // 初期状態としてREADMEを作成
+        const readmePath = path.join(repoPath, 'README.md');
+        fs.writeFileSync(readmePath, `# ${repo}\n\nInitial repository setup\n`);
+        await repoGit.add(['README.md']);
+        await repoGit.commit('Initial commit');
+        
+        // mainブランチを作成
+        await repoGit.checkoutLocalBranch('main');
+      }
       
       logger.info(`リポジトリクローン完了: ${repoPath}`);
       
@@ -100,16 +222,57 @@ export class RepositoryService extends GitHubServiceBase {
         maxConcurrentProcesses: 1
       });
       
+      // リモートURLが正しいか確認
+      const remotes = await gitInDirectory.getRemotes(true);
+      const originRemote = remotes.find(r => r.name === 'origin');
+      const expectedUrl = `https://github.com/${this.owner}/${this.repo}.git`;
+      
+      if (!originRemote || !originRemote.refs.fetch.includes(`${this.owner}/${this.repo}`)) {
+        logger.info(`リモートURLが正しくないため更新します: ${expectedUrl}`);
+        if (originRemote) {
+          await gitInDirectory.removeRemote('origin');
+        }
+        await gitInDirectory.addRemote('origin', expectedUrl);
+      }
+      
       // 現在のブランチを取得
       const currentBranch = await gitInDirectory.branch();
       
       // fromBranchに切り替える
       if (currentBranch.current !== fromBranch) {
-        await gitInDirectory.checkout([fromBranch]);
+        try {
+          await gitInDirectory.checkout([fromBranch]);
+        } catch (checkoutError) {
+          // fromBranchが存在しない場合、masterを試す
+          logger.warn(`${fromBranch}ブランチへの切り替えに失敗しました。masterブランチを試みます。`);
+          try {
+            await gitInDirectory.checkout(['master']);
+            fromBranch = 'master';
+          } catch (masterError) {
+            // どちらも失敗した場合は現在のブランチを使用
+            logger.warn(`masterブランチへの切り替えにも失敗しました。現在のブランチを使用します: ${currentBranch.current}`);
+            fromBranch = currentBranch.current;
+          }
+        }
       }
       
       // リモートから最新を取得
-      await gitInDirectory.pull(['origin', fromBranch]);
+      try {
+        await gitInDirectory.fetch(['origin']);
+// ensure working tree is clean before switching branches
+await gitInDirectory.clean('f', ['-d']);
+await gitInDirectory.reset(['--hard']);
+
+        // リモートブランチが存在する場合のみpull
+        try {
+          await gitInDirectory.pull(['origin', fromBranch]);
+        } catch (pullError) {
+          logger.warn(`リモートブランチからのプルに失敗しました: ${this.getErrorMessage(pullError)}`);
+          logger.info(`ローカルブランチのみで作業を継続します。`);
+        }
+      } catch (fetchError) {
+        logger.warn(`リモートからのフェッチに失敗しました: ${this.getErrorMessage(fetchError)}`);
+      }
       
       // 既存ブランチの一覧を取得
       const branches = await gitInDirectory.branch();
@@ -123,6 +286,10 @@ export class RepositoryService extends GitHubServiceBase {
         await gitInDirectory.checkoutBranch(branchName, fromBranch);
         logger.info(`ブランチ '${branchName}' を作成しました。`);
       }
+      
+      // 修正ファイルセットをクリア（新しいブランチの作成時）
+      this.modifiedFiles.clear();
+      
     } catch (error: unknown) {
       const errorMsg = this.getErrorMessage(error);
       logger.error(`ブランチ作成中にエラーが発生: ${errorMsg}`);
@@ -131,7 +298,7 @@ export class RepositoryService extends GitHubServiceBase {
   }
 
   /**
-   * 変更をコミットする (-f オプションで.gitignoreの制限を無視)
+   * 変更をコミットする (ファイルを指定して実行)
    */
   public async commitChanges(files: string[], message: string): Promise<void> {
     try {
@@ -150,6 +317,9 @@ export class RepositoryService extends GitHubServiceBase {
         maxConcurrentProcesses: 1
       });
       
+      // 修正ファイルセットに追加
+      files.forEach(file => this.modifiedFiles.add(file));
+      
       // ファイルを追加 (-f オプションで.gitignoreを無視する)
       await gitInDirectory.add(['-f', ...files]);
       
@@ -157,6 +327,7 @@ export class RepositoryService extends GitHubServiceBase {
       await gitInDirectory.commit(message);
       
       logger.info(`コミット完了: ${message} (パス: ${repoPath})`);
+      logger.info(`修正されたファイル: ${Array.from(this.modifiedFiles).join(', ')}`);
     } catch (error: unknown) {
       const errorMsg = this.getErrorMessage(error);
       logger.error(`コミット中にエラーが発生: ${errorMsg}`);
@@ -165,7 +336,7 @@ export class RepositoryService extends GitHubServiceBase {
   }
 
   /**
-   * 現在のブランチの変更をプッシュする
+   * 現在のブランチの変更をプッシュする (修正ファイルのみ)
    */
   public async pushChanges(branch: string = ''): Promise<void> {
     try {
@@ -195,9 +366,30 @@ export class RepositoryService extends GitHubServiceBase {
       const remotes = await gitInDirectory.getRemotes(true);
       logger.info(`リモート一覧: ${JSON.stringify(remotes)}`);
       
+      // リモートURLが正しいか確認し、必要なら更新
+      const originRemote = remotes.find(r => r.name === 'origin');
+      const expectedUrl = `https://github.com/${this.owner}/${this.repo}.git`;
+      
+      if (!originRemote || !originRemote.refs.fetch.includes(`${this.owner}/${this.repo}`)) {
+        logger.info(`リモートURLが正しくないため更新します: ${expectedUrl}`);
+        if (originRemote) {
+          await gitInDirectory.removeRemote('origin');
+        }
+        await gitInDirectory.addRemote('origin', expectedUrl);
+      }
+      
       // 認証情報を確認
       try {
+        // 正しいリポジトリURLを使用する
         const githubUrl = `https://${config.GITHUB_TOKEN}@github.com/${this.owner}/${this.repo}.git`;
+        
+        // 既存の認証リモートがあれば削除
+        try {
+          await gitInDirectory.removeRemote('authenticated');
+        } catch (removeError) {
+          // リモートが存在しない場合はエラーを無視
+        }
+        
         await gitInDirectory.addRemote('authenticated', githubUrl);
         
         // 認証付きリモートにプッシュ
@@ -222,6 +414,21 @@ export class RepositoryService extends GitHubServiceBase {
   }
 
   /**
+   * ファイルを修正リストに追加（コミットなし）
+   */
+  public trackModifiedFile(filePath: string): void {
+    this.modifiedFiles.add(filePath);
+    logger.info(`ファイルを追跡リストに追加: ${filePath}`);
+  }
+
+  /**
+   * 現在修正中のファイル一覧を取得
+   */
+  public getModifiedFiles(): string[] {
+    return Array.from(this.modifiedFiles);
+  }
+
+  /**
    * ブランチ間の変更されたファイルを取得
    */
   public async getChangedFiles(
@@ -236,28 +443,81 @@ export class RepositoryService extends GitHubServiceBase {
       const repoPath = (this.repositoryAnalyzer as any)['repoPath'];
       const repoGit = simpleGit(repoPath);
       
-      // 差分を取得
-      const diff = await repoGit.diff([`${baseBranch}...${headBranch}`, '--name-only']);
-      const changedFilePaths = diff.split('\n').filter(line => line.trim() !== '');
-      
-      const result: ChangedFile[] = [];
-      
-      for (const filePath of changedFilePaths) {
-        try {
-          // ファイル差分の詳細を取得
-          const fileDiff = await repoGit.diff([`${baseBranch}...${headBranch}`, '--', filePath]);
-          
-          result.push({
-            path: filePath,
-            changes: fileDiff
-          });
-        } catch (error: unknown) {
-          const errorMsg = this.getErrorMessage(error);
-          logger.warn(`ファイル差分取得エラー (${filePath}): ${errorMsg}`);
+      // 修正ファイルのみを対象にする場合
+      if (this.modifiedFiles.size > 0) {
+        logger.info(`修正ファイルのみの差分を返します: ${Array.from(this.modifiedFiles).join(', ')}`);
+        
+        const result: ChangedFile[] = [];
+        
+        for (const filePath of this.modifiedFiles) {
+          try {
+            // ファイルパスを正規化
+            const normalizedPath = path.normalize(filePath);
+            
+            // ファイル内容を取得
+            const fileContent = fs.readFileSync(path.join(repoPath, normalizedPath), 'utf-8');
+            
+            result.push({
+              path: normalizedPath,
+              changes: fileContent // 全体を変更内容とする
+            });
+          } catch (fileError) {
+            logger.warn(`ファイル読み込みエラー (${filePath}): ${this.getErrorMessage(fileError)}`);
+          }
         }
+        
+        return result;
       }
       
-      return result;
+      // 通常のdiff（リポジトリ全体の差分を対象）
+      try {
+        const diff = await repoGit.diff([`${baseBranch}...${headBranch}`, '--name-only']);
+        const changedFilePaths = diff.split('\n').filter(line => line.trim() !== '');
+        
+        const result: ChangedFile[] = [];
+        
+        for (const filePath of changedFilePaths) {
+          try {
+            // ファイル差分の詳細を取得
+            const fileDiff = await repoGit.diff([`${baseBranch}...${headBranch}`, '--', filePath]);
+            
+            result.push({
+              path: filePath,
+              changes: fileDiff
+            });
+          } catch (error: unknown) {
+            const errorMsg = this.getErrorMessage(error);
+            logger.warn(`ファイル差分取得エラー (${filePath}): ${errorMsg}`);
+          }
+        }
+        
+        return result;
+      } catch (diffError) {
+        logger.warn(`ブランチ間の差分取得に失敗しました: ${this.getErrorMessage(diffError)}`);
+        logger.info(`修正されたファイルのみの情報を使用します`);
+        
+        // ブランチ間の差分が取得できない場合は修正ファイルの情報のみ返す
+        const result: ChangedFile[] = [];
+        
+        for (const filePath of this.modifiedFiles) {
+          try {
+            // ファイルパスを正規化
+            const normalizedPath = path.normalize(filePath);
+            
+            // ファイル内容を取得
+            const fileContent = fs.readFileSync(path.join(repoPath, normalizedPath), 'utf-8');
+            
+            result.push({
+              path: normalizedPath,
+              changes: fileContent // 全体を変更内容とする
+            });
+          } catch (fileError) {
+            logger.warn(`ファイル読み込みエラー (${filePath}): ${this.getErrorMessage(fileError)}`);
+          }
+        }
+        
+        return result;
+      }
     } catch (error: unknown) {
       const errorMsg = this.getErrorMessage(error);
       logger.error(`変更ファイル取得中にエラーが発生: ${errorMsg}`);

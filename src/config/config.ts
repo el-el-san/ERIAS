@@ -6,6 +6,9 @@ import dotenv from 'dotenv';
 import path from 'path';
 
 // .envファイルを読み込み
+
+// Resolve project root directory once to avoid nested paths
+const BASE_DIR = path.resolve(__dirname, '../../');
 dotenv.config();
 
 export const config = {
@@ -41,7 +44,7 @@ export const config = {
   // タスク実行設定
   MAX_EXECUTION_TIME: parseInt(process.env.MAX_EXECUTION_TIME || '3600000', 10), // デフォルト1時間
   MAX_DEBUG_RETRIES: parseInt(process.env.MAX_DEBUG_RETRIES || '5', 10),
-  PROJECTS_DIR: process.env.PROJECTS_DIR || path.join(process.cwd(), 'projects'),
+  PROJECTS_DIR: process.env.PROJECTS_DIR || path.join(BASE_DIR, 'projects'),
   
   // ログ設定
   LOG_LEVEL: process.env.LOG_LEVEL || 'info',

@@ -64,11 +64,30 @@ export class PullRequestService extends GitHubServiceBase {
       const user = await this.octokit.users.getAuthenticated();
       logger.info(`認証済みユーザー: ${user.data.login}`);
       
-      // リポジトリが存在するか確認
-      const repo = await this.octokit.repos.get({
-        owner: this.owner,
-        repo: this.repo
-      });
+      try {
+        // リポジトリが存在するか確認
+        await this.octokit.repos.get({
+          owner: this.owner,
+          repo: this.repo
+        });
+      } catch (repoError) {
+        logger.error(`リポジトリ確認エラー: ${this.getErrorMessage(repoError)}`);
+        throw new Error(`リポジトリ ${this.owner}/${this.repo} が存在しないか、アクセス権限がありません。`);
+      }
+      
+      try {
+        // PR作成前にフォーク関係などを確認
+        const compare = await this.octokit.repos.compareCommits({
+          owner: this.owner,
+          repo: this.repo,
+          base: baseBranch,
+          head: headBranch
+        });
+        
+        logger.info(`コミット比較: ${compare.data.status}, ${compare.data.ahead_by} commits ahead, ${compare.data.behind_by} commits behind`);
+      } catch (compareError) {
+        logger.warn(`コミット比較エラー: ${this.getErrorMessage(compareError)}. ブランチが適切にプッシュされていない可能性があります。`);
+      }
       
       // PR作成時には単純なブランチ名を指定
       const pr = await this.octokit.pulls.create({
@@ -90,6 +109,13 @@ export class PullRequestService extends GitHubServiceBase {
     } catch (error: unknown) {
       const errorMsg = this.getErrorMessage(error);
       logger.error(`プルリクエスト作成中にエラーが発生: ${errorMsg}`);
+      
+      // エラーメッセージがブランチ履歴の問題を示している場合
+      if (errorMsg.includes('no history in common') || errorMsg.includes('no common ancestor')) {
+        logger.error(`ブランチの履歴に問題があります。ベースブランチ(${baseBranch})とヘッドブランチ(${headBranch})に共通の履歴がありません。`);
+        logger.info(`この問題は通常、リモートURLが正しくないか、初期コミットがないことが原因です。`);
+      }
+      
       throw new Error(`プルリクエスト作成に失敗しました: ${errorMsg}`);
     }
   }
