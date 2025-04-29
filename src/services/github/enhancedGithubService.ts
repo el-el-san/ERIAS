@@ -67,13 +67,6 @@ export class EnhancedGitHubService {
   }
 
   // 追跡リスト関連メソッド
-  trackModifiedFile(filePath: string): void {
-    this.repositoryService.trackModifiedFile(filePath);
-  }
-
-  getModifiedFiles(): string[] {
-    return this.repositoryService.getModifiedFiles();
-  }
 
   // ファイル関連メソッド
   async readFile(filePath: string, branch: string = 'main'): Promise<string> {
