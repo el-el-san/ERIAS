@@ -24,6 +24,9 @@ export class EnhancedGitHubService {
     this.repositoryService = new RepositoryService(options);
     this.fileService = new FileService(options);
     this.pullRequestService = new PullRequestService(options);
+    this.repositoryService = new RepositoryService(options);
+    this.fileService = new FileService(options);
+    this.pullRequestService = new PullRequestService(options);
     this.featureService = new FeatureService(this.repositoryService);
   }
 
@@ -34,7 +37,7 @@ export class EnhancedGitHubService {
     // 他のサービスにも同じレポジトリ情報を設定
     // FileServiceにRepositoryServiceへの参照を渡す
     await this.fileService.initRepository(owner, repo, this.repositoryService);
-    await this.pullRequestService.initRepository(owner, repo);
+    await this.pullRequestService.initRepository(owner, repo, this.repositoryService);
     
     // FeatureServiceの初期化も必要
     await this.featureService.initRepository(owner, repo);
@@ -63,6 +66,15 @@ export class EnhancedGitHubService {
     return this.repositoryService.getModifiedFiles();
   }
 
+  // 追跡リスト関連メソッド
+  trackModifiedFile(filePath: string): void {
+    this.repositoryService.trackModifiedFile(filePath);
+  }
+
+  getModifiedFiles(): string[] {
+    return this.repositoryService.getModifiedFiles();
+  }
+
   // ファイル関連メソッド
   async readFile(filePath: string, branch: string = 'main'): Promise<string> {
     return this.fileService.readFile(filePath, branch);
@@ -71,10 +83,14 @@ export class EnhancedGitHubService {
   async updateFile(filePath: string, content: string, message: string, branch: string): Promise<void> {
     // ファイル更新時に追跡リストに追加
     this.repositoryService.trackModifiedFile(filePath);
+    // ファイル更新時に追跡リストに追加
+    this.repositoryService.trackModifiedFile(filePath);
     return this.fileService.updateFile(filePath, content, message, branch);
   }
 
   async createFile(filePath: string, content: string, message: string, branch: string): Promise<void> {
+    // ファイル作成時に追跡リストに追加
+    this.repositoryService.trackModifiedFile(filePath);
     // ファイル作成時に追跡リストに追加
     this.repositoryService.trackModifiedFile(filePath);
     return this.fileService.createFile(filePath, content, message, branch);
@@ -134,6 +150,8 @@ export class EnhancedGitHubService {
 
   // モジュール間連携が必要な操作
   async commitChanges(files: string[], message: string): Promise<void> {
+    // ファイル追跡リストに追加
+    files.forEach(file => this.repositoryService.trackModifiedFile(file));
     // ファイル追跡リストに追加
     files.forEach(file => this.repositoryService.trackModifiedFile(file));
     return this.repositoryService.commitChanges(files, message);
