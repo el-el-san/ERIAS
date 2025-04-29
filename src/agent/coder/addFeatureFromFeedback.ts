@@ -14,6 +14,11 @@ export async function addFeatureFromFeedback(
     // タスク内容に「README」や「readme」が含まれていればREADME.mdを編集
     const lower = feedback.content.toLowerCase();
     if (lower.includes('readme')) {
+      // projectPathが未定義の場合は処理を中断
+      if (!task.projectPath) {
+        return false;
+      }
+      
       const readmePath = path.join(task.projectPath, 'README.md');
       let content = '';
       try {

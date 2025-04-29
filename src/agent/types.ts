@@ -10,6 +10,25 @@ export enum ProjectStatus {
   COMPLETED = 'completed',   // 完了
   FAILED = 'failed',         // 失敗
   CANCELLED = 'cancelled',   // キャンセル
+  IN_PROGRESS = 'in_progress', // 処理中
+}
+
+/**
+ * タスクフェーズを表す型
+ */
+export type TaskPhase = 'planning' | 'coding' | 'testing' | 'debugging';
+
+/**
+ * タスク進捗状況の型
+ */
+export interface TaskProgress {
+  planning: number;    // 0-1 の範囲で計画フェーズの進捗
+  coding: number;      // 0-1 の範囲でコーディングフェーズの進捗
+  testing: number;     // 0-1 の範囲でテストフェーズの進捗
+  debugging: number;   // 0-1 の範囲でデバッグフェーズの進捗
+  overall: number;     // 0-1 の範囲で全体の進捗
+  currentPhase?: TaskPhase; // 現在のフェーズ
+  message?: string;    // 進捗メッセージ
 }
 
 /**
@@ -64,17 +83,22 @@ export interface ErrorInfo {
 /**
  * フィードバックの緊急度を表す型
  */
-export type FeedbackUrgency = 'normal' | 'critical';
+export type FeedbackUrgency = 'normal' | 'critical' | 'high' | 'low';
 
 /**
  * フィードバックの優先度を表す型
  */
-export type FeedbackPriority = 'normal' | 'high';
+export type FeedbackPriority = 'normal' | 'high' | 'low';
 
 /**
  * フィードバックの種類を表す型
  */
 export type FeedbackType = 'general' | 'plan' | 'code' | 'feature' | 'fix';
+
+/**
+ * フィードバックのステータスを表す型
+ */
+export type FeedbackStatus = 'pending' | 'processing' | 'applied' | 'rejected' | 'completed';
 
 /**
  * ユーザーフィードバックの型
@@ -88,7 +112,7 @@ export interface UserFeedback {
   urgency: FeedbackUrgency;             // 緊急度
   type: FeedbackType;                   // フィードバックの種類
   targetFile?: string;                  // 対象ファイル（あれば）
-  status: 'pending' | 'processing' | 'applied' | 'rejected'; // 状態
+  status: FeedbackStatus;               // 状態
   appliedPhase?: string;                // 適用されたフェーズ
 }
 
@@ -102,34 +126,106 @@ export interface FeedbackQueue {
 }
 
 /**
+ * テスト結果の型
+ */
+export interface TestResult {
+  success: boolean;                     // テスト成功フラグ
+  output: string;                       // テスト出力
+  errors?: string[];                    // エラー一覧（あれば）
+}
+
+/**
+ * GitHub関連の追加型定義
+ */
+
+/**
+ * GitHubリポジトリ情報の型
+ */
+export interface GitHubRepoInfo {
+  name: string;                         // リポジトリ名
+  fullName: string;                     // 完全なリポジトリ名（owner/repo）
+  description: string;                  // リポジトリの説明
+  owner: {
+    login: string;                      // オーナーログイン名
+    type: string;                       // オーナータイプ（User/Organization）
+  };
+  defaultBranch: string;                // デフォルトブランチ名
+  language: string;                     // 主要言語
+  hasIssues: boolean;                   // Issues有効フラグ
+  hasProjects: boolean;                 // Projects有効フラグ
+  hasWiki: boolean;                     // Wiki有効フラグ
+  createdAt: string;                    // 作成日時
+  updatedAt: string;                    // 更新日時
+  size: number;                         // リポジトリサイズ
+  topics: string[];                     // トピック一覧
+}
+
+/**
+ * GitHubタスク実行オプションの型
+ */
+export interface GitHubTaskOptions {
+  createPullRequest?: boolean;          // PRを作成するかどうか
+  baseBranch?: string;                  // ベースブランチ名
+  skipTests?: boolean;                  // テストをスキップするかどうか
+}
+
+/**
  * プロジェクトタスクの型
  */
 export interface ProjectTask {
   id: string;                            // タスクID
-  userId: string;                        // 依頼ユーザーID
-  guildId: string;                       // サーバーID
-  channelId: string;                     // チャンネルID
-  specification: string;                 // 要求仕様
+  userId?: string;                       // 依頼ユーザーID
+  guildId?: string;                      // サーバーID
+  channelId?: string;                    // チャンネルID
+  specification?: string;                // 要求仕様
   status: ProjectStatus;                 // 現在の状態
+  type: 'project' | 'github';            // タスクの種類
   plan?: DevelopmentPlan;                // 開発計画
-  errors: ErrorInfo[];                   // 発生したエラー
-  startTime: number;                     // 開始時刻
+  errors?: ErrorInfo[];                  // 発生したエラー
+  startTime?: number;                    // 開始時刻
   endTime?: number;                      // 終了時刻
-  projectPath: string;                   // プロジェクトパス
-  lastProgressUpdate: number;            // 最終進捗更新時刻
+  projectPath?: string;                  // プロジェクトパス
+  lastProgressUpdate?: number;           // 最終進捗更新時刻
   currentAction?: string;                // 現在の処理内容
-  feedbackQueue: FeedbackQueue;          // フィードバックキュー
-  hasCriticalFeedback: boolean;          // 緊急フィードバックの有無
+  feedbackQueue?: FeedbackQueue;         // フィードバックキュー
+  hasCriticalFeedback?: boolean;         // 緊急フィードバックの有無
   additionalInstructions?: string;       // 追加指示（LLMプロンプトに使用）
   requiresRecoding?: boolean;            // 再コーディングが必要
   currentContextualFeedback?: string[];  // 現在のコンテキストに関するフィードバック
-  isGitHubRepo?: boolean;                // GitHubリポジトリタスクかどうか
+  createdAt: Date;                       // 作成日時
+  updatedAt: Date;                       // 更新日時
+  completedAt?: Date;                    // 完了日時
+  cancelledAt?: Date;                    // キャンセル日時
+  progress: TaskProgress;                // 進捗状況
+  resultUrl?: string;                    // 結果URL（ZIPファイルなど）
+  errorMessage?: string;                 // エラーメッセージ
+  feedback?: UserFeedback[];             // フィードバック一覧
+
+  // GitHub関連情報
   repoUrl?: string;                      // GitHubリポジトリURL
   repoOwner?: string;                    // GitHubリポジトリオーナー
   repoName?: string;                     // GitHubリポジトリ名
   repoBranch?: string;                   // GitHubリポジトリブランチ
   repoTask?: string;                     // GitHubタスク内容
   pullRequestUrl?: string;               // 作成したプルリクエストのURL
+}
+
+/**
+ * 外部に公開されるプロジェクト情報の型
+ */
+export interface ProjectInfo {
+  id: string;                            // タスクID
+  status: ProjectStatus;                 // 現在の状態
+  type: 'project' | 'github';            // タスクの種類
+  specification?: string;                // 要求仕様
+  createdAt: Date;                       // 作成日時
+  updatedAt: Date;                       // 更新日時
+  completedAt?: Date;                    // 完了日時
+  cancelledAt?: Date;                    // キャンセル日時
+  progress: TaskProgress;                // 進捗状況
+  resultUrl?: string;                    // 結果URL（ZIPファイルなど）
+  errorMessage?: string;                 // エラーメッセージ
+  pullRequestUrl?: string;               // 作成したプルリクエストのURL（GitHub連携の場合）
 }
 
 /**
@@ -237,7 +333,7 @@ export interface Tester {
    * テストを実行
    * @param task プロジェクトタスク
    */
-  runTests(task: ProjectTask): Promise<{success: boolean; output: string}>;
+  runTests(task: ProjectTask): Promise<TestResult>;
 }
 
 /**

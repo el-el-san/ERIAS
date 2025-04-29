@@ -3,7 +3,8 @@ import {
   ProjectTask, 
   ProjectStatus,
   FileInfo,
-  DevelopmentPlan
+  DevelopmentPlan,
+  ErrorInfo
 } from './types';
 import { Planner } from './planner';
 import { Coder } from './coder';
@@ -104,12 +105,10 @@ export class ProjectGenerator {
     await notifyProgressFn(task, '依存関係をインストール中...');
     await this.coder.installDependencies(task);
     
-+    // --- ここから追加 ---
-+    // README.md を生成
-+    await notifyProgressFn(task, 'README.md を生成中...');
-+    await this.coder.generateReadme(task);
-+    // --- ここまで追加 ---
-+
+    // README.md を生成
+    await notifyProgressFn(task, 'README.md を生成中...');
+    await this.coder.generateReadme(task);
+    
     // コーディング完了の通知とフィードバック募集
     await notifyProgressFn(task, `コーディングが完了しました。
     \`task:${task.id}\` をメンションして追加指示を出すことができます。次のフェーズに進む前に${waitSeconds}秒間待機します。`);
@@ -159,6 +158,11 @@ await new Promise(resolve => setTimeout(resolve, waitSeconds * 1000));
       testResult.output += "\n\n--- 再テスト結果 ---\n" + retestResult.output;
     }
     
+    // errors配列を確認し、未定義の場合は初期化
+    if (!task.errors) {
+      task.errors = [];
+    }
+    
     // テスト失敗時はデバッグフェーズに進む
     if (!testResult.success && task.errors.length > 0) {
       let debugAttempts = 0;
@@ -175,29 +179,36 @@ await new Promise(resolve => setTimeout(resolve, waitSeconds * 1000));
         // 最新のエラーを取得
         const latestError = task.errors[task.errors.length - 1];
         
-        // エラーを修正
-        const fixResult = await this.debugger.fixError(task, latestError);
-        
-        if (fixResult) {
-          // 修正後にテストを再実行
-          await notifyProgressFn(task, '修正後のテストを実行中...');
-          const retriedTestResult = await this.tester.runTests(task);
+        // latestErrorが存在する場合のみ修正を試みる
+        if (latestError) {
+          // エラーを修正
+          const fixResult = await this.debugger.fixError(task, latestError);
           
-          if (retriedTestResult.success) {
-            // テストが成功した場合はデバッグループを終了
-            await notifyProgressFn(task, 'エラーを修正し、テストが成功しました');
-            break;
-          } else if (debugAttempts >= maxDebugRetries) {
-            // 最大試行回数に達した場合
-            await notifyProgressFn(task, `最大試行回数 (${maxDebugRetries}) に達しましたが、一部のエラーが解決できませんでした`);
+          if (fixResult) {
+            // 修正後にテストを再実行
+            await notifyProgressFn(task, '修正後のテストを実行中...');
+            const retriedTestResult = await this.tester.runTests(task);
+            
+            if (retriedTestResult.success) {
+              // テストが成功した場合はデバッグループを終了
+              await notifyProgressFn(task, 'エラーを修正し、テストが成功しました');
+              break;
+            } else if (debugAttempts >= maxDebugRetries) {
+              // 最大試行回数に達した場合
+              await notifyProgressFn(task, `最大試行回数 (${maxDebugRetries}) に達しましたが、一部のエラーが解決できませんでした`);
+            }
+          } else {
+            // 修正に失敗した場合
+            await notifyProgressFn(task, `エラーの修正に失敗しました (試行 ${debugAttempts}/${maxDebugRetries})`);
+            
+            if (debugAttempts >= maxDebugRetries) {
+              await notifyProgressFn(task, `最大試行回数 (${maxDebugRetries}) に達しましたが、エラーを修正できませんでした`);
+            }
           }
         } else {
-          // 修正に失敗した場合
-          await notifyProgressFn(task, `エラーの修正に失敗しました (試行 ${debugAttempts}/${maxDebugRetries})`);
-          
-          if (debugAttempts >= maxDebugRetries) {
-            await notifyProgressFn(task, `最大試行回数 (${maxDebugRetries}) に達しましたが、エラーを修正できませんでした`);
-          }
+          // エラー情報がない場合はデバッグループを終了
+          await notifyProgressFn(task, 'デバッグに必要なエラー情報がありません');
+          break;
         }
       }
     }
@@ -222,7 +233,7 @@ await new Promise(resolve => setTimeout(resolve, waitSeconds * 1000));
     logger.info(`Generated ZIP file: ${zipPath}`);
     
     // 完了メッセージ
-    const duration = (task.endTime - task.startTime) / 1000;
+    const duration = ((task.endTime ?? Date.now()) - (task.startTime ?? Date.now())) / 1000;
     await notifyProgressFn(task, `プロジェクト生成が完了しました (所要時間: ${duration.toFixed(1)}秒)`);
     
     return zipPath;
@@ -234,6 +245,12 @@ await new Promise(resolve => setTimeout(resolve, waitSeconds * 1000));
    */
   public async archiveProject(task: ProjectTask): Promise<string> {
     return new Promise<string>((resolve, reject) => {
+      // projectPathが未定義の場合はエラー
+      if (!task.projectPath) {
+        reject(new Error('プロジェクトパスが未定義です'));
+        return;
+      }
+
       const projectName = path.basename(task.projectPath);
       const zipPath = path.join(path.dirname(task.projectPath), `${projectName}.zip`);
       

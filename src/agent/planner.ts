@@ -51,13 +51,13 @@ export class Planner implements PlannerInterface {
 
       // プロンプト変数を準備
       const variables = {
-        projectName: path.basename(task.projectPath),
-        specification: task.specification,
+        projectName: path.basename(task.projectPath ?? ''),
+        specification: task.specification ?? '',
         currentTime: new Date().toISOString(),
       };
 
       // 計画立案用プロンプトを生成
-      const prompt = this.promptBuilder.buildPlanPrompt(task.specification, variables);
+      const prompt = this.promptBuilder.buildPlanPrompt(task.specification ?? '', variables);
       const systemPrompt = this.promptBuilder.buildSystemPrompt(variables);
 
       // Gemini API（Function Calling）で計画を生成
@@ -88,7 +88,7 @@ export class Planner implements PlannerInterface {
        // Plan.md を生成して保存
        try {
          const planMarkdown = this._generatePlanMarkdown(validatedPlan); // メソッド呼び出しに変更
-         const planFilePath = path.join(task.projectPath, 'Plan.md'); // task.projectPath を使用
+         const planFilePath = path.join(task.projectPath ?? '', 'Plan.md');
          await fs.writeFile(planFilePath, planMarkdown);
          logger.info(`Plan saved to ${planFilePath}`);
        } catch (writeError) {
@@ -242,8 +242,8 @@ export class Planner implements PlannerInterface {
 
       // プロンプト変数を準備
       const variables = {
-        projectName: path.basename(task.projectPath),
-        specification: task.specification,
+        projectName: path.basename(task.projectPath ?? ''),
+        specification: task.specification ?? '',
         currentTime: new Date().toISOString(),
       };
 
@@ -300,8 +300,8 @@ export class Planner implements PlannerInterface {
 
       // プロンプト変数を準備
       const variables = {
-        projectName: path.basename(task.projectPath),
-        specification: task.specification,
+        projectName: path.basename(task.projectPath ?? ''),
+        specification: task.specification ?? '',
         currentTime: new Date().toISOString(),
       };
 

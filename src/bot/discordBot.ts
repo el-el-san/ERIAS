@@ -325,6 +325,12 @@ file:パス - 特定ファイルに対する指示（例: \`file:src/App.js\`）
       let progressMsg = this.progressMessages.get(task.id);
       if (!progressMsg) {
         // 進捗メッセージが見つからない場合は新規作成してMapに保存
+        // channelIdが未定義の場合はエラーを回避
+        if (!task.channelId) {
+          logger.warn(`No channelId found for task ${task.id}`);
+          return;
+        }
+
         const channel = await this.client.channels.fetch(task.channelId);
         if (channel && 'send' in channel && typeof channel.send === 'function') {
           progressMsg = await channel.send(`タスク進捗: ${message}`);
@@ -341,10 +347,13 @@ file:パス - 特定ファイルに対する指示（例: \`file:src/App.js\`）
       }
       
       // 経過時間を計算
-      const elapsedTime = Math.floor((Date.now() - task.startTime) / 1000);
+      // startTimeが未定義の場合は現在時刻を使用
+      const startTime = task.startTime || Date.now();
+      const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
       
       // 進捗メッセージを更新
-      const statusText = `プロジェクト生成中 - タスクID: \`${task.id}\`\n\n**状態**: ${this.getStatusText(task.status)}\n**経過時間**: ${this.formatDuration(elapsedTime)}\n**現在の処理**: ${message}\n\n**仕様**:\n${task.specification.slice(0, 200)}${task.specification.length > 200 ? '...' : ''}`;
+      const spec = task.specification ?? '';
+      const statusText = `プロジェクト生成中 - タスクID: \`${task.id}\`\n\n**状態**: ${this.getStatusText(task.status)}\n**経過時間**: ${this.formatDuration(elapsedTime)}\n**現在の処理**: ${message}\n\n**仕様**:\n${spec.slice(0, 200)}${spec.length > 200 ? '...' : ''}`;
       
       await progressMsg.edit(statusText);
     } catch (error) {

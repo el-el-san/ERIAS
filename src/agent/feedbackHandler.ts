@@ -35,7 +35,9 @@ export class FeedbackHandler {
     notifyProgressFn: (task: ProjectTask, message: string) => Promise<void>
   ): Promise<void> {
     const queue = task.feedbackQueue;
-    const pendingFeedbacks = queue.feedbacks.slice(queue.lastProcessedIndex);
+    if (!queue) return;
+    
+    const pendingFeedbacks = queue.feedbacks?.slice(queue.lastProcessedIndex ?? 0) ?? [];
     
     if (pendingFeedbacks.length === 0) {
       return;
@@ -60,7 +62,9 @@ ${combinedFeedback}
     task.additionalInstructions = processingPrompt;
     
     // 処理済みとしてマーク
-    queue.lastProcessedIndex = queue.feedbacks.length;
+    if (queue) {
+      queue.lastProcessedIndex = queue.feedbacks?.length ?? 0;
+    }
     
     for (const feedback of pendingFeedbacks) {
       feedback.status = 'processing';
@@ -77,8 +81,7 @@ ${combinedFeedback}
     notifyProgressFn: (task: ProjectTask, message: string) => Promise<void>
   ): Promise<void> {
     const queue = task.feedbackQueue;
-    const criticalFeedbacks = queue.feedbacks
-      .filter(f => f.status === 'pending' && f.urgency === 'critical');
+    const criticalFeedbacks = queue?.feedbacks?.filter(f => f.status === 'pending' && f.urgency === 'critical') ?? [];
     
     if (criticalFeedbacks.length === 0) {
       return;
@@ -191,7 +194,7 @@ ${combinedFeedback}
         // 既存ファイルの内容を取得（存在する場合）
         let existingContent = '';
         try {
-          existingContent = await fs.readFile(path.join(task.projectPath, fileInfo.path), 'utf8');
+          existingContent = await fs.readFile(path.join(task.projectPath ?? '', fileInfo.path), 'utf8');
         } catch (err) {
           // ファイルが存在しない場合は無視
         }
@@ -202,7 +205,7 @@ ${combinedFeedback}
         fileInfo.status = 'updated';
         
         // 更新されたファイルを保存
-        const filePath = path.join(task.projectPath, fileInfo.path);
+        const filePath = path.join(task.projectPath ?? '', fileInfo.path);
         const fileDir = path.dirname(filePath);
         await fs.mkdir(fileDir, { recursive: true });
         await fs.writeFile(filePath, content);
@@ -225,7 +228,7 @@ ${combinedFeedback}
         fileInfo.status = 'generated';
         
         // 新しいファイルを保存
-        const filePath = path.join(task.projectPath, fileInfo.path);
+        const filePath = path.join(task.projectPath ?? '', fileInfo.path);
         const fileDir = path.dirname(filePath);
         await fs.mkdir(fileDir, { recursive: true });
         await fs.writeFile(filePath, content);

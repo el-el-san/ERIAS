@@ -1,4 +1,6 @@
-import { Octokit } from '@octokit/rest';
+// 動的インポートのために型だけ先に宣言
+type OctokitType = any;
+let OctokitModule: { Octokit: OctokitType };
 import { simpleGit, SimpleGit } from 'simple-git';
 import path from 'path';
 import fs from 'fs/promises';
@@ -12,7 +14,7 @@ import { normalizeAbsolutePath } from '../tools/fileSystem.js';
  * GitHubリポジトリの操作を担当
  */
 export class GitHubService {
-  private octokit: Octokit;
+  private octokit: OctokitType;
   private repoMap: Map<string, string> = new Map(); // プロジェクトパス -> リポジトリURLのマッピング
   
   /**
@@ -20,9 +22,39 @@ export class GitHubService {
    * @param token GitHubトークン（オプション）
    */
   constructor(token?: string) {
-    this.octokit = new Octokit({
-      auth: token || process.env.GITHUB_TOKEN
-    });
+    // コンストラクタでは初期化だけ行い、実際のOctokitインスタンス作成は後で行う
+    this.octokit = null as any;
+    this.token = token || process.env.GITHUB_TOKEN;
+  }
+  
+  // トークンを保存するプロパティ
+  private token?: string;
+
+  /**
+   * Octokitの初期化
+   * @param token GitHubトークン
+   */
+  private async initOctokit(): Promise<void> {
+    try {
+      // 既に初期化されていれば処理をスキップ
+      if (this.octokit && typeof this.octokit !== 'undefined' && this.octokit !== null) {
+        return;
+      }
+      
+      // 動的インポート
+      if (!OctokitModule) {
+        OctokitModule = await import('octokit');
+      }
+      
+      this.octokit = new OctokitModule.Octokit({
+        auth: this.token
+      });
+      
+      logger.info('Octokitの初期化が成功しました');
+    } catch (error) {
+      logger.error(`Octokitの初期化に失敗しました: ${(error as Error).message}`);
+      throw error;
+    }
   }
   
   /**
@@ -44,8 +76,8 @@ export class GitHubService {
       const parts = repoUrl.split('/');
       if (parts.length >= 2) {
         return {
-          owner: parts[0],
-          repo: parts[1].replace('.git', '')
+          owner: parts[parts.length - 2],
+          repo: parts[parts.length - 1].replace('.git', '')
         };
       }
     }
@@ -126,6 +158,14 @@ export class GitHubService {
     try {
       const git: SimpleGit = simpleGit(repoPath);
       
+      // まず変更があるか確認
+      const status = await git.status();
+      
+      if (status.files.length === 0) {
+        logger.info('変更がありません。コミットをスキップします。');
+        return true; // 変更がなくてもエラーとはみなさない
+      }
+      
       await git.add(['--force', '.']);
       
       const commitResult = await git.commit(message);
@@ -165,6 +205,24 @@ export class GitHubService {
         await git.remote(['set-url', 'origin', repoUrl]);
       }
       
+      // リモートリポジトリにアクセスできるか確認
+      try {
+        await git.listRemote(['--heads']);
+      } catch (error) {
+        logger.error(`リモートリポジトリへのアクセスに失敗: ${(error as Error).message}`);
+        
+        // 認証情報を確認
+        if (!process.env.GITHUB_TOKEN) {
+          throw new Error('GitHubトークンが設定されていません。GITHUB_TOKEN環境変数を設定してください。');
+        }
+        
+        // トークンを使用したURLを設定
+        const { owner, repo } = this.parseRepoUrl(repoUrl);
+        const tokenUrl = `https://${process.env.GITHUB_TOKEN}@github.com/${owner}/${repo}.git`;
+        await git.remote(['set-url', 'origin', tokenUrl]);
+        logger.info('認証付きURLを使用してリモートを設定しました');
+      }
+      
       // プッシュ実行
       await git.push('origin', branchName, ['--set-upstream']);
       
@@ -196,7 +254,17 @@ export class GitHubService {
     logger.info(`プルリクエストを作成中: ${title}`);
     
     try {
-      const { data } = await this.octokit.pulls.create({
+      // Octokitが初期化されていることを確認
+      if (!this.octokit) {
+        await this.initOctokit();
+      }
+      
+      // GitHub APIの認証を確認
+      if (!this.octokit.auth) {
+        throw new Error('GitHubトークンが設定されていません。GITHUB_TOKEN環境変数を設定してください。');
+      }
+      
+      const { data } = await this.octokit.rest.pulls.create({
         owner,
         repo,
         title,
@@ -209,6 +277,19 @@ export class GitHubService {
       return data.html_url;
     } catch (error) {
       logger.error(`プルリクエストの作成に失敗: ${(error as Error).message}`);
+      
+      // 詳細なエラー情報の記録
+      if (error instanceof Error) {
+        logger.error(`エラーの詳細: ${error.stack}`);
+        
+        // Octokit APIエラーの場合、より詳細な情報を取得
+        if ('response' in error && (error as any).response) {
+          const response = (error as any).response;
+          logger.error(`APIエラー: ${response.status} ${response.statusText}`);
+          logger.error(`エラーメッセージ: ${JSON.stringify(response.data, null, 2)}`);
+        }
+      }
+      
       throw error;
     }
   }
@@ -220,7 +301,12 @@ export class GitHubService {
    */
   public async getDefaultBranch(owner: string, repo: string): Promise<string> {
     try {
-      const { data } = await this.octokit.repos.get({
+      // Octokitが初期化されていることを確認
+      if (!this.octokit) {
+        await this.initOctokit();
+      }
+      
+      const { data } = await this.octokit.rest.repos.get({
         owner,
         repo
       });
@@ -252,6 +338,7 @@ export class GitHubService {
     テスト手順も提供してください。
     `;
   }
+  
   /**
    * 指定したローカルブランチをリモートの最新の状態に同期
    * @param repoPath リポジトリのパス
@@ -274,6 +361,105 @@ export class GitHubService {
     } catch (error) {
       logger.error(`ブランチの同期に失敗: ${(error as Error).message}`);
       return false;
+    }
+  }
+  
+  /**
+   * リポジトリのファイル一覧を取得
+   * @param repoPath リポジトリのパス
+   */
+  public async listRepositoryFiles(repoPath: string): Promise<string[]> {
+    try {
+      // OSによって適切なコマンドを使用
+      let findCommand = 'find . -type f -not -path "*/\\.*" -not -path "*/node_modules/*" | sort';
+      
+      // Windows環境の場合は代替コマンドを使用
+      if (process.platform === 'win32') {
+        findCommand = 'dir /b /s /a:-D | findstr /v /i "\\.git\\" | findstr /v /i "\\node_modules\\"';
+      }
+      
+      const { stdout } = await executeCommand(findCommand, {}, repoPath);
+      
+      const files = stdout.split('\n')
+        .filter(line => line.trim() !== '')
+        .map(line => {
+          // Windowsの場合はフルパスが返されるので、相対パスに変換
+          if (process.platform === 'win32') {
+            return line.replace(repoPath, '').replace(/^\\/g, '');
+          }
+          return line.replace('./', '');
+        });
+      
+      return files;
+    } catch (error) {
+      logger.error(`リポジトリのファイル一覧取得に失敗: ${(error as Error).message}`);
+      
+      // エラー発生時は空の配列を返す
+      return [];
+    }
+  }
+  
+  /**
+   * リポジトリのファイル内容を取得
+   * @param owner リポジトリオーナー
+   * @param repo リポジトリ名
+   * @param path ファイルパス
+   * @param ref ブランチ名またはコミットSHA（オプション）
+   */
+  public async getFileContent(owner: string, repo: string, path: string, ref?: string): Promise<string> {
+    try {
+      // Octokitが初期化されていることを確認
+      if (!this.octokit) {
+        await this.initOctokit();
+      }
+      
+      const { data } = await this.octokit.rest.repos.getContent({
+        owner,
+        repo,
+        path,
+        ref
+      });
+      
+      // ディレクトリの場合はエラー
+      if (Array.isArray(data)) {
+        throw new Error('指定されたパスはディレクトリです');
+      }
+      
+      // ファイルの場合はコンテンツを取得
+      if ('content' in data && 'encoding' in data) {
+        if (data.encoding === 'base64') {
+          return Buffer.from(data.content, 'base64').toString('utf-8');
+        }
+      }
+      
+      throw new Error('ファイルのコンテンツを取得できませんでした');
+    } catch (error) {
+      logger.error(`ファイル内容の取得に失敗: ${(error as Error).message}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * リポジトリの詳細情報を取得
+   * @param owner リポジトリオーナー
+   * @param repo リポジトリ名
+   */
+  public async getRepositoryInfo(owner: string, repo: string): Promise<any> {
+    try {
+      // Octokitが初期化されていることを確認
+      if (!this.octokit) {
+        await this.initOctokit();
+      }
+      
+      const { data } = await this.octokit.rest.repos.get({
+        owner,
+        repo
+      });
+      
+      return data;
+    } catch (error) {
+      logger.error(`リポジトリ情報の取得に失敗: ${(error as Error).message}`);
+      throw error;
     }
   }
 }

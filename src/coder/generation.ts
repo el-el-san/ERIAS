@@ -30,7 +30,7 @@ export async function generateFile(
     const relatedCode = await gatherRelatedCode(task, fileInfo);
 
     const variables = {
-      projectName: path.basename(task.projectPath),
+      projectName: path.basename(task.projectPath ?? ''),
       projectDescription: task.plan?.projectDescription || '',
       filePath: fileInfo.path,
       fileDescription: fileInfo.description,
@@ -87,7 +87,7 @@ export async function regenerateFile(
     const relatedCode = await gatherRelatedCode(task, fileInfo);
 
     const variables = {
-      projectName: path.basename(task.projectPath),
+      projectName: path.basename(task.projectPath ?? ''),
       projectDescription: task.plan?.projectDescription || '',
       filePath: fileInfo.path,
       fileDescription: fileInfo.description,
@@ -170,7 +170,7 @@ export async function adjustFileWithFeedback(
     }
 
     const variables = {
-      projectName: path.basename(task.projectPath),
+      projectName: path.basename(task.projectPath ?? ''),
       projectDescription: task.plan?.projectDescription || '',
       filePath: feedback.targetFile,
       currentTime: new Date().toISOString(),
@@ -223,7 +223,7 @@ export async function addFeatureFromFeedback(
     setupCodingTools(task);
 
     const variables = {
-      projectName: path.basename(task.projectPath),
+      projectName: path.basename(task.projectPath ?? ''),
       projectDescription: task.plan?.projectDescription || '',
       currentTime: new Date().toISOString(),
     };

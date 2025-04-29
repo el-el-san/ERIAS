@@ -13,7 +13,7 @@ export class PlannerImpl implements Planner {
   public async createPlan(task: ProjectTask): Promise<DevelopmentPlan> {
     // サンプルの開発計画を返す（実際の実装ではLLMを使用）
     return {
-      projectDescription: 'サンプルプロジェクト: ' + task.specification.substring(0, 50) + '...',
+      projectDescription: 'サンプルプロジェクト: ' + (task.specification?.substring(0, 50) ?? '') + '...',
       technicalStack: {
         frontend: ['React', 'TypeScript'],
         backend: ['Node.js', 'Express'],

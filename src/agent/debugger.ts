@@ -79,7 +79,7 @@ export class Debugger implements DebuggerInterface {
       
       // プロンプト変数を準備
       const variables = {
-        projectName: path.basename(task.projectPath),
+        projectName: path.basename(task.projectPath ?? ''),
         projectDescription: task.plan?.projectDescription || '',
         errorMessage: errorInfo.message,
         errorCode: errorCode || 'No code found',

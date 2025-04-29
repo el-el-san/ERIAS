@@ -50,7 +50,7 @@ export class GitHubTaskExecutor {
       
       await notifyProgressFn(task, `🔄 リポジトリをクローン中: ${task.repoUrl}`);
       // システム上の実際のクローン先を指定
-      const clonePath = normalizeAbsolutePath(task.projectPath);
+      const clonePath = normalizeAbsolutePath(task.projectPath ?? '');
       const cloneResult = await this.githubService.cloneRepository(task.repoUrl, clonePath);
       
       if (!cloneResult) {

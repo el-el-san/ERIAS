@@ -6,7 +6,7 @@ import { NotificationTarget } from '../../platforms/types';
 import { NotificationService } from '../services/notificationService';
 import { logger } from '../../tools/logger';
 import { TaskStatus, FeedbackOptions } from './types';
-import { ProjectTask, ProjectStatus, UserFeedback } from '../types';
+import { ProjectTask, ProjectStatus, UserFeedback, ProjectInfo } from '../types';
 import { mapProjectStatusToTaskState, calculateProgressFromStatus, generateProgressBar } from '../utils/progressUtils';
 
 export class TaskManager {
@@ -23,6 +23,36 @@ export class TaskManager {
    */
   getTaskStatus(taskId: string): TaskStatus | undefined {
     return this.tasks.get(taskId);
+  }
+
+  /**
+   * タスクの詳細情報を取得
+   */
+  getTaskInfo(taskId: string): ProjectInfo | null {
+    const projectTask = this.projectTasks.get(taskId);
+    if (!projectTask) return null;
+    
+    // ProjectTask から ProjectInfo に変換
+    return {
+      id: projectTask.id,
+      status: projectTask.status,
+      type: projectTask.type || 'project',
+      specification: projectTask.specification,
+      createdAt: projectTask.createdAt || new Date(),
+      updatedAt: projectTask.updatedAt || new Date(),
+      completedAt: projectTask.completedAt,
+      cancelledAt: projectTask.cancelledAt,
+      progress: projectTask.progress || {
+        planning: 0,
+        coding: 0,
+        testing: 0,
+        debugging: 0,
+        overall: 0
+      },
+      resultUrl: projectTask.resultUrl,
+      errorMessage: projectTask.errorMessage,
+      pullRequestUrl: projectTask.pullRequestUrl
+    };
   }
 
   /**
@@ -57,6 +87,24 @@ export class TaskManager {
    * タスク状態の新規作成
    */
   createTaskStatus(taskId: string, description: string): TaskStatus {
+    return this._createTaskStatus(taskId, description);
+  }
+
+  /**
+   * registerTask - GitHub連携タスクなどを登録
+   */
+  async registerTask(taskId: string, description: string, target: NotificationTarget): Promise<TaskStatus> {
+    const taskStatus = this._createTaskStatus(taskId, description);
+    await this.notificationService.sendNotification(target, {
+      text: `タスク ${taskId} を登録しました: ${description}`
+    });
+    return taskStatus;
+  }
+
+  /**
+   * タスク状態の内部作成処理
+   */
+  private _createTaskStatus(taskId: string, description: string): TaskStatus {
     const taskStatus: TaskStatus = {
       id: taskId,
       state: 'planning',
@@ -89,7 +137,18 @@ export class TaskManager {
         feedbacks: [],
         lastProcessedIndex: -1
       },
-      hasCriticalFeedback: false
+      hasCriticalFeedback: false,
+      // 必須プロパティを追加
+      type: 'project',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      progress: {
+        planning: 0,
+        coding: 0,
+        testing: 0,
+        debugging: 0,
+        overall: 0
+      }
     };
     
     this.projectTasks.set(taskId, projectTask);
@@ -99,7 +158,7 @@ export class TaskManager {
   /**
    * フィードバック処理
    */
-  async processFeedback(taskId: string, feedback: string, options: FeedbackOptions): Promise<boolean> {
+  async processFeedback(taskId: string, feedback: string, options: FeedbackOptions, target?: NotificationTarget): Promise<boolean> {
     const task = this.tasks.get(taskId);
     if (!task) return false;
     
@@ -148,6 +207,15 @@ export class TaskManager {
     };
     
     // フィードバックキューに追加
+    // feedbackQueueが未定義の場合は初期化してから追加
+    if (!projectTask.feedbackQueue) {
+      projectTask.feedbackQueue = {
+        taskId,
+        feedbacks: [],
+        lastProcessedIndex: -1
+      };
+    }
+    
     projectTask.feedbackQueue.feedbacks.push(userFeedback);
     if (options.isUrgent) {
       projectTask.hasCriticalFeedback = true;
