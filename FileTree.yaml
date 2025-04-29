@@ -4,17 +4,30 @@ src:
   agent:
     coder:
       addFeatureFromFeedback.ts: 34
+    core:
+      AgentCore.ts: 149
+      GitHubExecutor.ts: 51
+      index.ts: 8
+      ProjectExecutor.ts: 75
+      README.md: 51
+      ResponseGenerator.ts: 110
+      TaskManager.ts: 225
+      types.ts: 30
     services:
-      notificationService.ts: 108
-    agentCore.ts: 560
+      notificationService.ts: 139
+    utils:
+      index.ts: 3
+      progressUtils.ts: 64
+    agentCore.ts: 63
     coder.ts: 79
     debugger.ts: 411
     feedbackHandler.ts: 238
     githubTaskExecutor.ts: 181
     planner.ts: 368
     projectGenerator.ts: 306
+    REFACTORING_NOTES.md: 35
     tester.ts: 244
-    types.ts: 238
+    types.ts: 189
   bot:
     discord:
       events.ts: 100
@@ -46,10 +59,10 @@ src:
     index.ts: 85
   platforms:
     discord:
-      discordAdapter.ts: 344
+      discordAdapter.ts: 351
     slack:
-      slackAdapter.ts: 376
-    platformManager.ts: 169
+      slackAdapter.ts: 390
+    platformManager.ts: 197
     types.ts: 64
   services:
     githubService.ts: 253
@@ -61,6 +74,7 @@ src:
     logger.ts: 57
   types:
     archiver.d.ts: 1
+    notification.ts: 26
   utils:
     asyncUtils.ts: 82
     jsonUtils.ts: 47

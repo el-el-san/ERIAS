@@ -251,3 +251,6 @@ export interface Debugger {
    */
   fixError(task: ProjectTask, errorInfo: ErrorInfo): Promise<boolean>;
 }
+
+// コアタイプをエクスポート
+export { TaskStatus, FeedbackOptions } from './core/types';

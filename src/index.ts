@@ -34,7 +34,7 @@ async function main() {
     logger.info('ERIASを起動中...');
     
     // エージェントコアの初期化
-    const agentCore = new AgentCore();
+    const agentCore = AgentCore.getInstance();
     
     // コマンドハンドラーとフィードバックハンドラーのセットアップ
     const commandHandler = new CommandHandler(agentCore);

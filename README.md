@@ -178,42 +178,70 @@ ERIASが自動的に生成リクエストを検出し、適切なプロンプト
 
 ```
 src/
-├── platforms/           # プラットフォーム抽象化レイヤー
-│   ├── types.ts        # 共通インターフェース
-│   ├── platformManager.ts # プラットフォーム管理
-│   ├── discord/        # Discord実装
+├── platforms/                # プラットフォーム抽象化レイヤー
+│   ├── types.ts             # 共通インターフェース
+│   ├── platformManager.ts   # プラットフォーム管理
+│   ├── discord/             # Discord実装
 │   │   └── discordAdapter.ts
-│   └── slack/          # Slack実装
+│   └── slack/               # Slack実装
 │       └── slackAdapter.ts
-├── agent/              # AIエージェントのコア機能
-│   ├── agentCore.ts    # オーケストレーション
-│   ├── planner.ts      # 計画立案
-│   ├── coder.ts        # コード生成
-│   ├── tester.ts       # テスト実行
-│   ├── debugger.ts     # デバッグ
-│   ├── services/       # 各種サービス
+├── agent/                   # AIエージェントのコア機能
+│   ├── agentCore.ts         # ファサードパターンによる外部API
+│   ├── core/                # コアモジュール
+│   │   ├── AgentCore.ts     # メインコアクラス
+│   │   ├── GitHubExecutor.ts # GitHub連携実行
+│   │   ├── ProjectExecutor.ts # プロジェクト実行
+│   │   ├── ResponseGenerator.ts # LLM応答生成
+│   │   ├── TaskManager.ts   # タスク管理
+│   │   ├── types.ts         # コア固有の型定義
+│   │   └── index.ts         # エクスポート
+│   ├── utils/               # ユーティリティ
+│   │   ├── progressUtils.ts # 進捗関連ユーティリティ
+│   │   └── index.ts         # エクスポート
+│   ├── services/            # 各種サービス
 │   │   └── notificationService.ts
-│   └── githubTaskExecutor.ts  # GitHub連携
-├── generators/         # 生成機能
-│   ├── imageGenerator.ts # 画像生成
+│   ├── planner.ts           # 計画立案
+│   ├── coder.ts             # コード生成
+│   ├── tester.ts            # テスト実行
+│   ├── debugger.ts          # デバッグ
+│   ├── feedbackHandler.ts   # フィードバック処理
+│   ├── githubTaskExecutor.ts # GitHub連携
+│   ├── projectGenerator.ts  # プロジェクト生成
+│   └── types.ts             # 共通型定義
+├── generators/              # 生成機能
+│   ├── imageGenerator.ts    # 画像生成
 │   ├── imageRequestDetector.ts # 画像リクエスト検出
-│   └── types.ts        # 型定義
-├── bot/                # ボット関連
-│   ├── commandHandler.ts # コマンド処理
+│   └── types.ts             # 型定義
+├── bot/                     # ボット関連
+│   ├── discord/             # Discord固有の実装
+│   │   ├── events.ts        # Discordイベント
+│   │   └── handlers.ts      # Discordハンドラー
+│   ├── commandHandler.ts    # コマンド処理
+│   ├── discordBot.ts        # Discordボット
 │   └── feedbackMessageHandler.ts # フィードバック処理
-├── llm/                # LLM（大規模言語モデル）関連
-│   ├── geminiClient.ts # Gemini API連携
+├── llm/                     # LLM（大規模言語モデル）関連
+│   ├── geminiClient.ts      # Gemini API連携
 │   ├── conversationManager.ts # 会話履歴管理
-│   └── promptBuilder.ts # プロンプト生成
-├── services/           # 外部サービス連携
-│   └── githubService.ts # GitHub API操作
-├── tools/              # ユーティリティツール
-│   ├── commandExecutor.ts # コマンド実行
-│   ├── fileSystem.ts   # ファイル操作
-│   └── logger.ts       # ログ出力
-├── config/             # 設定関連
-│   └── config.ts       # 環境設定
-└── index.ts            # エントリーポイント
+│   ├── promptBuilder.ts     # プロンプト生成
+│   └── toolRegistry.ts      # ツール登録
+├── coder/                   # コード生成関連
+│   ├── dependency.ts        # 依存関係管理
+│   ├── generation.ts        # コード生成
+│   ├── index.ts             # エクスポート
+│   ├── regenerateFileStub.ts # ファイル再生成
+│   └── utils.ts             # ユーティリティ
+├── planner/                 # 計画立案関連
+│   ├── adjustPlanStub.ts    # 計画調整
+│   └── index.ts             # エクスポート
+├── services/                # 外部サービス連携
+│   └── githubService.ts     # GitHub API操作
+├── tools/                   # ユーティリティツール
+│   ├── commandExecutor.ts   # コマンド実行
+│   ├── fileSystem.ts        # ファイル操作
+│   └── logger.ts            # ログ出力
+├── config/                  # 設定関連
+│   └── config.ts            # 環境設定
+└── index.ts                 # エントリーポイント
 ```
 
 ## プロジェクト生成フロー
@@ -245,6 +273,22 @@ src/
    - 最終テストの実行
    - プロジェクトのZIPアーカイブ化
    - 完了通知
+
+## AgentCoreのモジュール構造
+
+AgentCoreはリファクタリングにより、より保守性の高いモジュール構造に再設計されています：
+
+- **AgentCore (src/agent/agentCore.ts)**: ファサードパターンを用いた外部公開API
+- **コアモジュール (src/agent/core/)**: 
+  - **AgentCore**: オーケストレーションと統合
+  - **TaskManager**: タスク状態の管理
+  - **ResponseGenerator**: LLM応答生成
+  - **ProjectExecutor**: プロジェクト生成実行
+  - **GitHubExecutor**: GitHub関連タスク実行
+- **ユーティリティ (src/agent/utils/)**: 
+  - **progressUtils**: 進捗表示関連
+
+この構造により、責務の分離が明確になり、テスト容易性や保守性が向上しています。各モジュールは単一責任の原則に従い、特定の機能に集中しています。
 
 ## マルチプラットフォーム設計
 
@@ -281,6 +325,10 @@ ERIASは抽象化されたアダプターパターンを採用し、複数のメ
 4. **LLM連携の最適化**
    - プロンプトエンジニアリングの強化
    - より細かなコンテキスト管理
+
+5. **モジュール構造の更なる改善**
+   - 依存性注入パターンの活用
+   - ユニットテストの追加と拡充
 
 ## 依存ライブラリ
 
