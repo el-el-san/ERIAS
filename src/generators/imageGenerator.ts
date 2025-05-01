@@ -1,9 +1,10 @@
 import { writeFile } from 'fs/promises';
 import { AttachmentBuilder } from 'discord.js';
-import logger from '../utils/logger.js';
+import logger from '../utils/logger';
+import { logError } from '../utils/logger';
 import { GoogleGeminiConfig } from './types';
 import { config } from '../config/config';
-import { GeminiClient } from '../llm/geminiClient.js';
+import { GeminiClient } from '../llm/geminiClient';
 
 // 動的インポートを使用して利用可能なパッケージを選択
 let GenerativeAI: any;
@@ -43,7 +44,7 @@ export class ImageGenerator {
         this.initialized = true;
         logger.info('Using @google/generative-ai as fallback (note: image generation may not be supported)');
       } catch (err2) {
-        logger.error('Failed to initialize Google AI SDK', { error: err2 });
+        logError('Failed to initialize Google AI SDK: ' + String(err2));
         throw new Error('Neither @google/genai nor @google/generative-ai could be loaded');
       }
     }
@@ -173,7 +174,7 @@ Enhanced: "A cute silver tabby cat with bright green eyes, sitting elegantly on 
 
       throw new Error('画像の生成に失敗しました');
     } catch (error) {
-      logger.error('Failed to generate image', { error });
+      logError('Failed to generate image: ' + String(error));
       throw error;
     }
   }

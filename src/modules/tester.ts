@@ -1,15 +1,15 @@
 import path from 'path';
 import { ProjectTask, Tester as TesterInterface } from '../types/agentTypes';
-import { commandTools, CommandResult, ExecOptions } from '../tools/commandExecutor';
-import { getProjectPath } from '../tools/fileSystem';
+import { commandTools, CommandResult, ExecOptions } from '../tools/commandExecutor.js';
+import { getProjectPath } from '../tools/fileSystem.js';
 import logger, { logError } from '../utils/logger';
-import { toolRegistry, ToolDefinition } from '../llm/toolRegistry';
+import { toolRegistry, ToolDefinition } from '../llm/toolRegistry.js';
 
 /**
  * テスト実行モジュール
  * プロジェクトのテストを実行する
  */
-export class Tester implements TesterInterface {
+export default class Tester implements TesterInterface {
   /**
    * テストを実行
    * @param task プロジェクトタスク

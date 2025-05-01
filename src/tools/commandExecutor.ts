@@ -1,6 +1,7 @@
 import { exec, ExecOptions } from 'child_process';
 import { promisify } from 'util';
 import logger from '../utils/logger.js';
+import { logError } from '../utils/logger';
 
 // CommandResult型の定義とエクスポート
 export type CommandResult = { success: boolean; output: string; } | { stdout: string; stderr: string; };
@@ -42,7 +43,7 @@ export async function executeCommand(
   } catch (error) {
     // エラーが発生した場合でもstdoutとstderrを返す
     const execError = error as { code: number; stdout: string; stderr: string; };
-    logger.error(`Command execution failed with code ${execError.code}: ${command}\n${execError.stderr}`);
+    logError(`Command execution failed with code ${execError.code}: ${command}\n${execError.stderr}`);
     
     return {
       stdout: execError.stdout || '',
@@ -84,13 +85,13 @@ export async function executeNpmInstall(
     
     // エラーチェック
     if (stderr && stderr.includes('ERR!')) {
-      logger.error(`npm install failed: ${stderr}`);
+      logError(`npm install failed: ${stderr}`);
       return false;
     }
     
     return true;
   } catch (error) {
-    logger.error(`npm install failed: ${(error as Error).message}`);
+    logError(`npm install failed: ${(error as Error).message}`);
     return false;
   }
 }
@@ -115,13 +116,13 @@ export async function executeNpmScript(
     
     // エラーチェック
     if (stderr && stderr.includes('ERR!')) {
-      logger.error(`npm script '${script}' failed: ${stderr}`);
+      logError(`npm script '${script}' failed: ${stderr}`);
       return { success: false, output: stderr };
     }
     
     return { success: true, output: stdout };
   } catch (error) {
-    logger.error(`npm script '${script}' failed: ${(error as Error).message}`);
+    logError(`npm script '${script}' failed: ${(error as Error).message}`);
     return { success: false, output: (error as Error).message };
   }
 }

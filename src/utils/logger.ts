@@ -46,4 +46,27 @@ const logger = winston.createLogger({
   ]
 });
 
+/**
+ * 共通エラーハンドリング関数
+ * @param error エラー内容（unknown型対応）
+ * @param context 任意の文脈情報（先頭に付与）
+ */
+export function logError(error: unknown, context?: string): void {
+  let message: string;
+  if (error instanceof Error) {
+    message = error.message + (error.stack ? `\n${error.stack}` : '');
+  } else if (typeof error === 'string') {
+    message = error;
+  } else {
+    try {
+      message = JSON.stringify(error);
+    } catch {
+      message = String(error);
+    }
+  }
+  if (context) {
+    message = `[${context}] ${message}`;
+  }
+  logger.error(message);
+}
 export default logger;

@@ -2,10 +2,12 @@
  * フィードバックメッセージハンドラー
  * プラットフォーム共通のメッセージ処理を行う
  */
-import { PlatformMessage, PlatformType } from '../platforms/types';
-import { PlatformManager } from '../platforms/platformManager';
+import { PlatformType } from '../types/agentTypes';
+import { PlatformMessage } from '../integrations/platforms/types';
+import { PlatformManager } from '../integrations/platforms/platformManager';
 import AgentCore from '../agent/agentCore';
-import { logger } from '../tools/logger';
+import logger from '../utils/logger';
+import { logError } from '../utils/logger';
 import { ImageRequestDetector } from '../generators/imageRequestDetector';
 import { ConversationMessage, conversationManager } from '../llm/conversationManager';
 

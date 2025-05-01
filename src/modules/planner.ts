@@ -1,13 +1,12 @@
 import path from 'path';
 import fs from 'fs/promises'; // fs/promises を使う
 import { DevelopmentPlan, ProjectTask, Planner as PlannerInterface, FileInfo } from '../types/agentTypes';
-import { GeminiClient } from '../llm/geminiClient';
-import { PromptBuilder, PromptType } from '../llm/promptBuilder';
-import logger from '../utils/logger';
-import { logError } from '../utils/logger';
-import { toolRegistry, ToolDefinition } from '../llm/toolRegistry';
-import { fileSystemTools, getProjectPath } from '../tools/fileSystem';
-import { safeJsonParse } from '../utils/jsonUtils';
+import { GeminiClient } from '../llm/geminiClient.js';
+import { PromptBuilder, PromptType } from '../llm/promptBuilder.js';
+import logger, { logError } from '../utils/logger';
+import { toolRegistry, ToolDefinition } from '../llm/toolRegistry.js';
+import { fileSystemTools, getProjectPath } from '../tools/fileSystem.js'; // getProjectPath をインポート
+import { safeJsonParse } from '../utils/jsonUtils.js'; // 追加
 
 /**
  * 指定した文字列から「//」で始まるコメント行を除去する
@@ -17,7 +16,7 @@ import { safeJsonParse } from '../utils/jsonUtils';
 function removeJsonLineComments(input: string): string {
   return input
     .split('\n')
-    .filter((line: string) => !line.trim().startsWith('//'))
+    .filter(line => !line.trim().startsWith('//'))
     .join('\n');
 }
 
@@ -25,7 +24,7 @@ function removeJsonLineComments(input: string): string {
  * 計画立案（プランニング）モジュール
  * ユーザーの要求仕様からプロジェクト計画を生成する
  */
-export class Planner implements PlannerInterface {
+export default class Planner implements PlannerInterface {
   private geminiClient: GeminiClient;
   private promptBuilder: PromptBuilder;
 
@@ -120,7 +119,7 @@ export class Planner implements PlannerInterface {
    */
   private setupPlanningTools(task: ProjectTask): void {
     // 計画立案に必要なファイルシステムツールを登録
-    const planningTools = fileSystemTools.map((tool: any) => {
+    const planningTools = fileSystemTools.map(tool => {
       // ツールのexecute関数をラップして、projectIdを自動で追加
       const wrappedTool: ToolDefinition = {
         name: tool.name,
@@ -209,7 +208,7 @@ export class Planner implements PlannerInterface {
       plan.files = [];
     } else {
       // 各ファイルに必要なプロパティを設定
-      plan.files = plan.files.map((file: FileInfo) => ({
+      plan.files = plan.files.map(file => ({
         ...file,
         status: file.status || 'pending'
       }));
@@ -220,7 +219,7 @@ export class Planner implements PlannerInterface {
       plan.steps = [];
     } else {
       // 各ステップに必要なプロパティを設定
-      plan.steps = plan.steps.map((step: any) => ({
+      plan.steps = plan.steps.map(step => ({
         ...step,
         status: step.status || 'pending'
       }));
@@ -398,7 +397,7 @@ export class Planner implements PlannerInterface {
 
     markdown += `## Development Steps\n`;
     if (plan.steps && plan.steps.length > 0) {
-      plan.steps.forEach((step, index) => {
+      plan.steps.forEach((step: { description: string }, index: number) => {
         markdown += `${index + 1}. **${step.description}**\n`; // details の参照を削除
         // markdown += `   - Status: ${step.status || 'pending'}\n`; // ステータスは実行時に変わるので含めない方が良いかも
       });

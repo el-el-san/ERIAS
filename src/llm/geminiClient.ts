@@ -1,8 +1,8 @@
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, Content } from '@google/generative-ai';
-import logger from '../utils/logger.js';
-import { config } from '../config/config.js';
-import { withRetry } from '../utils/asyncUtils.js';
-import { ConversationMessage } from './conversationManager.js';
+import { logError } from '../utils/logger';
+import { config } from '../config/config';
+import { withRetry } from '../utils/asyncUtils';
+import { ConversationMessage } from './conversationManager';
 
 /**
  * Google Gemini APIクライアント
@@ -125,7 +125,7 @@ export class GeminiClient {
         2 // 指数バックオフ係数
       );
     } catch (error) {
-      logger.error(`Gemini API error:`, error);
+      logError(String(error), 'Gemini API error:');
       throw error;
     }
   }
@@ -231,7 +231,7 @@ export class GeminiClient {
         2 // 指数バックオフ係数
       );
     } catch (error) {
-      logger.error(`Gemini API error in tool conversation:`, error);
+      logError(String(error), 'Gemini API error in tool conversation:');
       throw error;
     }
   }
@@ -334,7 +334,7 @@ export class GeminiClient {
       
       return fullResponse;
     } catch (error) {
-      logger.error(`Gemini API streaming error:`, error);
+      logError(String(error), 'Gemini API streaming error:');
       throw error;
     }
   }

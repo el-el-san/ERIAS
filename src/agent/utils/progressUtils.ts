@@ -1,8 +1,8 @@
 /**
  * 進捗管理ユーティリティ
  */
-import { ProjectStatus } from '../types';
-import { TaskStatus } from '../core/types';
+import { ProjectStatus } from '../../types/agentTypes';
+import { TaskStatus } from '../../core/types';
 
 /**
  * プログレスバーの生成

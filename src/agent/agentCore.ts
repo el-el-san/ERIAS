@@ -7,22 +7,21 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { AgentCore as CoreImpl } from './core/AgentCore';
-import { TaskManager } from './core/TaskManager';
-import { ProjectExecutor } from './core/ProjectExecutor';
-import { EnhancedGitHubExecutor, GitHubTaskParams, GitHubTaskResult } from './core/EnhancedGitHubExecutor';
-import { NotificationService } from './services/notificationService';
-import { ProjectGenerator } from './projectGenerator';
-import { Planner } from './planner';
-import { Coder } from './coder';
-import { Tester } from './tester';
-import { Debugger } from './debugger';
-import { FeedbackHandler } from './feedbackHandler';
+import { AgentCore as CoreImpl } from '../core/AgentCore';
+import { TaskManager } from '../core/TaskManager';
+import { ProjectExecutor } from '../core/Executor/ProjectExecutor';
+import { EnhancedGitHubExecutor, GitHubTaskParams, GitHubTaskResult } from '../core/Executor/EnhancedGitHubExecutor';
+import { NotificationService } from '../core/notificationService';
+import { ProjectGenerator } from '../modules/projectGenerator';
+import Planner from '../modules/planner';
+import { Coder } from '../modules/coder';
+import Tester from '../modules/tester';
+import Debugger from '../modules/debugger';
+import { FeedbackHandler } from '../modules/feedbackHandler';
 import { GeminiClient } from '../llm/geminiClient';
 import { PromptBuilder } from '../llm/promptBuilder';
-import { PlatformType, NotificationTarget } from '../platforms/types';
-import { FeedbackOptions } from './core/types';
-import { conversationManager } from '../llm/conversationManager';
+import { PlatformType, NotificationTarget } from '../types/agentTypes';
+import { FeedbackOptions } from '../core/types';
 import { ImageGenerator } from '../generators/imageGenerator';
 
 /**
@@ -200,7 +199,7 @@ class AgentCore {
       };
       
       // 実装済みのAgentCoreクラスのgenerateResponseメソッドを呼び出す
-      const { AgentCore } = require('./core/AgentCore');
+      const { AgentCore } = require('../core/AgentCore');
       const agentCoreInstance = new AgentCore();
       return await agentCoreInstance.generateResponse(prompt, target);
     } catch (error) {
@@ -231,7 +230,7 @@ class AgentCore {
       };
       
       // 実装済みのAgentCoreクラスのgenerateImageメソッドを呼び出す
-      const { AgentCore } = require('./core/AgentCore');
+      const { AgentCore } = require('../core/AgentCore');
       const agentCoreInstance = new AgentCore();
       return await agentCoreInstance.generateImage(prompt, target);
     } catch (error) {

@@ -1,9 +1,10 @@
 import path from 'path';
 import fs from 'fs/promises';
-import { FileInfo, ProjectTask, UserFeedback, DevelopmentPlan } from '../agent/types.js';
+import { FileInfo, ProjectTask, UserFeedback, DevelopmentPlan } from '../types/agentTypes';
 import { GeminiClient } from '../llm/geminiClient.js';
 import { PromptBuilder } from '../llm/promptBuilder.js';
-import logger from '../utils/logger.js';
+import logger from '../utils/logger';
+import { logError } from '../utils/logger';
 import { toolRegistry } from '../llm/toolRegistry.js';
 import { getProjectPath, listDirectory } from '../tools/fileSystem.js';
 
@@ -62,7 +63,7 @@ export async function generateFile(
     logger.debug(`Successfully generated file: ${fileInfo.path}`);
     return code;
   } catch (error) {
-    logger.error(`Error generating file ${fileInfo.path}: ${(error as Error).message}`);
+    logError(`Error generating file ${fileInfo.path}: ${(error as Error).message}`);
     throw error;
   } finally {
     toolRegistry.clearTools();
@@ -132,7 +133,7 @@ export async function regenerateFile(
     logger.debug(`Successfully regenerated file: ${fileInfo.path}`);
     return newCode;
   } catch (error) {
-    logger.error(`Error regenerating file ${fileInfo.path}: ${(error as Error).message}`);
+    logError(`Error regenerating file ${fileInfo.path}: ${(error as Error).message}`);
     throw error;
   } finally {
     toolRegistry.clearTools();
@@ -152,7 +153,7 @@ export async function adjustFileWithFeedback(
 
   try {
     if (!feedback.targetFile) {
-      logger.error('No target file specified in feedback');
+      logError('No target file specified in feedback');
       return false;
     }
 
@@ -165,7 +166,7 @@ export async function adjustFileWithFeedback(
     try {
       existingContent = await fs.readFile(filePath, 'utf-8');
     } catch (error) {
-      logger.error(`Could not read target file ${feedback.targetFile}: ${(error as Error).message}`);
+      logError(`Could not read target file ${feedback.targetFile}: ${(error as Error).message}`);
       return false;
     }
 
@@ -202,7 +203,7 @@ export async function adjustFileWithFeedback(
     logger.debug(`Successfully adjusted file: ${feedback.targetFile}`);
     return true;
   } catch (error) {
-    logger.error(`Error adjusting file: ${(error as Error).message}`);
+    logError(`Error adjusting file: ${(error as Error).message}`);
     return false;
   } finally {
     toolRegistry.clearTools();
@@ -261,7 +262,7 @@ export async function addFeatureFromFeedback(
     logger.info(`Successfully processed feature addition feedback (implementation pending)`);
     return true;
   } catch (error) {
-    logger.error(`Error adding feature from feedback: ${(error as Error).message}`);
+    logError(`Error adding feature from feedback: ${(error as Error).message}`);
     return false;
   } finally {
     toolRegistry.clearTools();
@@ -289,7 +290,7 @@ export async function generateReadme(
       .map(([key, value]) => `- ${key}: ${(Array.isArray(value) ? value.join(', ') : value) || 'N/A'}`)
       .join('\n') : 'N/A';
     const dependencies = task.plan?.dependencies ?
-      `Production:\n${task.plan.dependencies.production.map(d => `- ${d}`).join('\n') || '- N/A'}\n\nDevelopment:\n${task.plan.dependencies.development.map(d => `- ${d}`).join('\n') || '- N/A'}`
+      `Production:\n${task.plan.dependencies.production.map((d: string) => `- ${d}`).join('\n') || '- N/A'}\n\nDevelopment:\n${task.plan.dependencies.development.map((d: string) => `- ${d}`).join('\n') || '- N/A'}`
       : 'N/A';
 
     let fileList = 'N/A';
@@ -330,7 +331,7 @@ export async function generateReadme(
     await fs.writeFile(readmePath, readmeContent.trim(), 'utf-8');
     logger.info(`Successfully generated README.md`);
   } catch (error) {
-    logger.error(`Error generating README.md: ${(error as Error).message}`);
+    logError(`Error generating README.md: ${(error as Error).message}`);
   } finally {
     toolRegistry.clearTools();
   }

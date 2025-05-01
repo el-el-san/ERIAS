@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import logger from '../utils/logger.js';
+import logger, { logError } from '../utils/logger';
 
 /**
  * プロンプトテンプレートの種類
@@ -48,7 +48,7 @@ export class PromptBuilder {
         }
       }
     } catch (error) {
-      logger.error(`Error loading prompt templates: ${(error as Error).message}`);
+      logError(error, `Error loading prompt templates: ${(error as Error).message}`);
     }
   }
 
@@ -196,7 +196,7 @@ export class PromptBuilder {
         // 実際の実装ではここでLLMを使用してプロンプトを最適化する
         return `${basePrompt}, high quality, detailed, 4k resolution, vibrant colors, realistic`;
       } catch (error) {
-        logger.error(`Error optimizing image prompt: ${(error as Error).message}`);
+        logError(error, `Error optimizing image prompt: ${(error as Error).message}`);
       }
     }
     

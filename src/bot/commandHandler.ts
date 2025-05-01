@@ -5,7 +5,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import agentCore from '../agent/agentCore';
-import { logger } from '../tools/logger';
+import logger from '../utils/logger';
 
 export interface CommandContext {
   platformId: string;

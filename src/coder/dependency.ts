@@ -1,7 +1,8 @@
 import path from 'path';
 import fs from 'fs/promises';
-import { ProjectTask } from '../agent/types.js';
-import logger from '../utils/logger.js';
+import { ProjectTask } from '../types/agentTypes';
+import logger from '../utils/logger';
+import { logError } from '../utils/logger';
 import { getProjectPath } from '../tools/fileSystem.js';
 import { commandTools } from '../tools/commandExecutor.js';
 import { toolRegistry } from '../llm/toolRegistry.js';
@@ -70,7 +71,7 @@ export async function installDependencies(
         );
 
         if (!result) {
-          logger.error(`Failed to install production dependencies`);
+          logError(`Failed to install production dependencies`);
           return false;
         }
       }
@@ -88,7 +89,7 @@ export async function installDependencies(
         );
 
         if (!result) {
-          logger.error(`Failed to install development dependencies`);
+          logError(`Failed to install development dependencies`);
           return false;
         }
       }
@@ -97,7 +98,7 @@ export async function installDependencies(
     logger.info('Successfully installed all dependencies');
     return true;
   } catch (error) {
-    logger.error(`Error installing dependencies: ${(error as Error).message}`);
+    logError(`Error installing dependencies: ${(error as Error).message}`);
     return false;
   } finally {
     toolRegistry.clearTools();

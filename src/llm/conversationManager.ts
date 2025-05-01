@@ -1,8 +1,8 @@
-import { User } from 'discord.js';
 import fs from 'fs';
 import path from 'path';
-import logger from '../utils/logger.js';
-import { config } from '../config/config.js';
+import logger from '../utils/logger';
+import { logError } from '../utils/logger';
+import { config } from '../config/config';
 
 /**
  * 会話メッセージの型定義
@@ -62,7 +62,7 @@ export class ConversationManager {
         // 定期的に古いセッションを削除
         setInterval(this.cleanupSessions.bind(this), 60000); // 1分ごとにクリーンアップ
       } catch (error) {
-        logger.error(`Failed to initialize conversation manager: ${(error as Error).message}`);
+        logError(`Failed to initialize conversation manager: ${(error as Error).message}`);
       }
     }
   }
@@ -208,7 +208,7 @@ export class ConversationManager {
           logger.debug(`Deleted session file: ${sessionPath}`);
         }
       } catch (error) {
-        logger.error(`Failed to delete session file: ${(error as Error).message}`);
+        logError(`Failed to delete session file: ${(error as Error).message}`);
       }
     }
     
@@ -264,7 +264,7 @@ export class ConversationManager {
       );
       logger.debug(`Saved session to: ${sessionPath}`);
     } catch (error) {
-      logger.error(`Failed to save session: ${(error as Error).message}`);
+      logError(`Failed to save session: ${(error as Error).message}`);
     }
   }
   
@@ -308,20 +308,20 @@ export class ConversationManager {
           userSessions.set(sessionData.channelId, sessionData);
           logger.debug(`Loaded session from: ${filePath}`);
         } catch (error) {
-          logger.error(`Failed to load session from ${filePath}: ${(error as Error).message}`);
+          logError(`Failed to load session from ${filePath}: ${(error as Error).message}`);
           // 破損したファイルを削除
           try {
             fs.unlinkSync(filePath);
             logger.debug(`Deleted corrupted session file: ${filePath}`);
           } catch (err) {
-            logger.error(`Failed to delete corrupted session file: ${(err as Error).message}`);
+            logError(`Failed to delete corrupted session file: ${(err as Error).message}`);
           }
         }
       }
       
       logger.info(`Loaded ${this.sessions.size} user sessions from disk`);
     } catch (error) {
-      logger.error(`Failed to load sessions: ${(error as Error).message}`);
+      logError(`Failed to load sessions: ${(error as Error).message}`);
     }
   }
   
@@ -347,7 +347,7 @@ export class ConversationManager {
                 fs.unlinkSync(sessionPath);
               }
             } catch (error) {
-              logger.error(`Failed to delete expired session file: ${(error as Error).message}`);
+              logError(`Failed to delete expired session file: ${(error as Error).message}`);
             }
           }
         }

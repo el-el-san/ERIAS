@@ -2,13 +2,14 @@
  * ERIAS - メイン起動ポイント
  * マルチプラットフォーム対応版
  */
-import { PlatformManager } from './platforms/platformManager';
+import { PlatformManager } from './integrations/platforms/platformManager';
 import { CommandHandler } from './bot/commandHandler';
 import { FeedbackMessageHandler } from './bot/feedbackMessageHandler';
 import AgentCore from './agent/agentCore';
 import { config, validateConfig } from './config/config';
-import { logger } from './tools/logger';
-import { PlatformCommandDefinition } from './platforms/types';
+import logger from './utils/logger';
+import { logError } from './utils/logger';
+import { PlatformCommandDefinition } from './integrations/platforms/types';
 
 async function main() {
   console.log(`
@@ -44,11 +45,11 @@ async function main() {
     const platformManager = PlatformManager.getInstance();
     
     // メッセージとコマンドのハンドラーを登録
-    platformManager.addMessageHandler(async (message) => {
+    platformManager.addMessageHandler(async (message: import('./integrations/platforms/types').PlatformMessage) => {
       await feedbackMessageHandler.handleMessage(message);
     });
     
-        platformManager.addCommandHandler(async (command) => {
+    platformManager.addCommandHandler(async (command: import('./integrations/platforms/types').PlatformCommand) => {
       // CommandHandlerにhandleCommandは存在しないため、コマンド名で分岐
       if (command.name === 'newproject') {
         const newProjectResult = await commandHandler.handleNewProject(

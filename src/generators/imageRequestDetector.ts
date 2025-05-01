@@ -2,8 +2,8 @@
  * 画像生成リクエスト検出
  * メッセージから画像生成リクエストを検出して生成内容を抽出
  */
-import { PlatformMessage } from '../platforms/types';
-import { logger } from '../tools/logger';
+import { PlatformMessage } from '../integrations/platforms/types';
+import { logError } from '../utils/logger';
 
 export class ImageRequestDetector {
   /**
@@ -39,7 +39,7 @@ export class ImageRequestDetector {
       
       return null;
     } catch (error) {
-      logger.error('Error detecting image request:', error);
+      logError(error, 'Error detecting image request:');
       return null;
     }
   }

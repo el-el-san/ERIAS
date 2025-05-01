@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { config } from '../config/config.js';
 import logger from '../utils/logger.js';
+import { logError } from '../utils/logger';
 
 /**
  * パスを正規化して絶対パスに変換
@@ -32,7 +33,7 @@ export async function createProjectDirectory(projectPath: string): Promise<void>
     await fs.mkdir(projectPath, { recursive: true });
     logger.debug(`Created project directory: ${projectPath}`);
   } catch (error) {
-    logger.error(`Failed to create project directory: ${(error as Error).message}`);
+    logError(`Failed to create project directory: ${(error as Error).message}`);
     throw error;
   }
 }
@@ -92,7 +93,7 @@ export async function writeProjectFile(projectPathOrArgs: string | { projectPath
     await fs.writeFile(fullPath, actualContent, 'utf-8');
     logger.debug(`Wrote file: ${fullPath}`);
   } catch (error) {
-    logger.error(`Failed to write file ${fullPath}: ${(error as Error).message}`);
+    logError(`Failed to write file ${fullPath}: ${(error as Error).message}`);
     throw error;
   }
 }
@@ -139,7 +140,7 @@ export async function readProjectFile(projectPathOrArgs: string | { projectPath?
     const content = await fs.readFile(fullPath, 'utf-8');
     return content;
   } catch (error) {
-    logger.error(`Failed to read file ${fullPath}: ${(error as Error).message}`);
+    logError(`Failed to read file ${fullPath}: ${(error as Error).message}`);
     throw error;
   }
 }
@@ -180,7 +181,7 @@ export async function listDirectory(projectPathOrArgs: string | { projectPath?: 
     const items = await fs.readdir(fullPath);
     return items;
   } catch (error) {
-    logger.error(`Failed to list directory ${fullPath}: ${(error as Error).message}`);
+    logError(`Failed to list directory ${fullPath}: ${(error as Error).message}`);
     throw error;
   }
 }

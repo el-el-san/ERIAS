@@ -1,6 +1,6 @@
 import path from 'path';
 import fs from 'fs/promises';
-import { ProjectTask, FileInfo } from '../agent/types.js';
+import { ProjectTask, FileInfo } from '../types/agentTypes';
 import logger from '../utils/logger.js';
 import { toolRegistry, ToolDefinition } from '../llm/toolRegistry.js';
 import { fileSystemTools, getProjectPath } from '../tools/fileSystem.js';
