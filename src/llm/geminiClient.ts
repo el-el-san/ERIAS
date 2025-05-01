@@ -125,7 +125,7 @@ export class GeminiClient {
         2 // 指数バックオフ係数
       );
     } catch (error) {
-      logger.error(`Gemini API error: ${(error as Error).message}`);
+      logger.error(`Gemini API error:`, error);
       throw error;
     }
   }
@@ -231,7 +231,7 @@ export class GeminiClient {
         2 // 指数バックオフ係数
       );
     } catch (error) {
-      logger.error(`Gemini API error in tool conversation: ${(error as Error).message}`);
+      logger.error(`Gemini API error in tool conversation:`, error);
       throw error;
     }
   }
@@ -334,7 +334,7 @@ export class GeminiClient {
       
       return fullResponse;
     } catch (error) {
-      logger.error(`Gemini API streaming error: ${(error as Error).message}`);
+      logger.error(`Gemini API streaming error:`, error);
       throw error;
     }
   }

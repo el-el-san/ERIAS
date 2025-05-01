@@ -4,12 +4,11 @@
     "image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bullseye",
   
     // ★1) 非機密＋デフォルト値
-    "envFile": "../.env",              // .env が存在すれば読み込む
     "containerEnv": {
       "NODE_ENV": "${localEnv:NODE_ENV:info}", // ログレベル（debug, info, warn, error）
       "LOG_FILE": "${localEnv:LOG_FILE:./logs/erias.log}",
       "ENABLE_DISCORD": "${localEnv:ENABLE_DISCORD:true}",
-      "ENABLE_SLACK": "${localEnv:ENABLE_SLACK:false}",
+      "ENABLE_SLACK": "${localEnv:ENABLE_SLACK:true}",
       "SLACK_PORT": "${localEnv:SLACK_PORT:3000}",
       "DEFAULT_MODEL": "${localEnv:DEFAULT_MODEL:gemini-2.5-flash-preview-04-17}",
       "MAX_EXECUTION_TIME": "${localEnv:MAX_EXECUTION_TIME:3600000}",
