@@ -6,17 +6,28 @@
     // ★1) 非機密＋デフォルト値
     "envFile": "../.env",              // .env が存在すれば読み込む
     "containerEnv": {
-      "GOOGLE_API_KEY": "${localEnv:GOOGLE_API_KEY:gemini-2.5-flash-preview-04-17}",
+      "NODE_ENV": "${localEnv:NODE_ENV:info}", // ログレベル（debug, info, warn, error）
+      "LOG_FILE": "${localEnv:LOG_FILE:./logs/erias.log}",
+      "ENABLE_DISCORD": "${localEnv:ENABLE_DISCORD:true}",
+      "ENABLE_SLACK": "${localEnv:ENABLE_SLACK:false}",
+      "SLACK_PORT": "${localEnv:SLACK_PORT:3000}",
+      "DEFAULT_MODEL": "${localEnv:DEFAULT_MODEL:gemini-2.5-flash-preview-04-17}",
       "MAX_EXECUTION_TIME": "${localEnv:MAX_EXECUTION_TIME:3600000}",
       "MAX_DEBUG_RETRIES": "${localEnv:MAX_DEBUG_RETRIES:5}",
       "PROJECTS_DIR": "${localEnv:PROJECTS_DIR:./projects}",
-      "./projects": "${localEnv:./projects:info}"
+      "WAIT_SECONDS": "${localEnv:WAIT_SECONDS:1}"
     },
   
     // ★2) 機密 (Codespaces Secrets → コンテナへ転送)
     "remoteEnv": {
       "DISCORD_TOKEN":     "${localEnv:DISCORD_TOKEN}",
       "DISCORD_CLIENT_ID":  "${localEnv:DISCORD_CLIENT_ID}",
+      "ALLOWED_GUILD_IDS":  "${localEnv:ALLOWED_GUILD_IDS}",
+      "ALLOWED_USER_IDS":  "${localEnv:ALLOWED_USER_IDS}",
+      "SLACK_BOT_TOKEN":  "${localEnv:SLACK_BOT_TOKEN}",
+      "SLACK_SIGNING_SECRET":  "${localEnv:SLACK_SIGNING_SECRET}",
+      "SLACK_APP_TOKEN":  "${localEnv:SLACK_APP_TOKEN}",
+      "SLACK_ALLOWED_CHANNEL_IDS":  "${localEnv:SLACK_ALLOWED_CHANNEL_IDS}",
       "GOOGLE_API_KEY":        "${localEnv:GOOGLE_API_KEY}"
     },
   
@@ -24,6 +35,12 @@
     "secrets": {
       "DISCORD_TOKEN": { "description": "Discord Bot Token" },
       "DISCORD_CLIENT_ID": { "description": "Discord Client ID" },
+      "ALLOWED_GUILD_IDS": { "description": "Discord Parameter" },
+      "ALLOWED_USER_IDS": { "description": "Discord Parameter" },
+      "SLACK_BOT_TOKEN": { "description": "Slack Bot Token" },
+      "SLACK_SIGNING_SECRET": { "description": "Slack signing secret" },
+      "SLACK_APP_TOKEN": { "description": "Slack app token" },
+      "SLACK_ALLOWED_CHANNEL_IDS": { "description": "slack channel id" },
       "GOOGLE_API_KEY":    { "description": "Google API Key" } 
     },
   
